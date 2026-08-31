@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { StoryNestLogo } from './StoryNestLogo';
-import { X, Lock, Mail, User, Sparkles, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { X, Lock, Mail, User, Sparkles, ArrowRight, CheckCircle2, ShieldCheck, AlertTriangle, Copy, Check } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const AuthModal: React.FC = () => {
@@ -22,15 +22,38 @@ export const AuthModal: React.FC = () => {
   const [role, setRole] = useState<'reader' | 'author'>('reader');
   const [forgotSent, setForgotSent] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [domainError, setDomainError] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   if (!showAuthModal) return null;
 
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'my-story-nest.vercel.app';
+
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
+    setDomainError(null);
     try {
-      await signInWithGoogle();
+      const ok = await signInWithGoogle();
+      if (!ok) {
+        // If signInWithGoogle returned false, check if current domain is likely the reason
+        if (window.location.hostname && !window.location.hostname.includes('firebaseapp.com') && !window.location.hostname.includes('localhost')) {
+          setDomainError(window.location.hostname);
+        }
+      }
+    } catch (err: any) {
+      if (err?.code === 'auth/unauthorized-domain') {
+        setDomainError(window.location.hostname || 'my-story-nest.vercel.app');
+      }
     } finally {
       setIsGoogleLoading(false);
+    }
+  };
+
+  const copyDomainToClipboard = () => {
+    if (domainError || currentHost) {
+      navigator.clipboard.writeText(domainError || currentHost);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
     }
   };
 
@@ -118,6 +141,41 @@ export const AuthModal: React.FC = () => {
               </svg>
               <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google (Firebase)'}</span>
             </button>
+
+            {domainError && (
+              <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-slate-300 text-[11px] leading-relaxed">
+                <div className="flex items-center gap-1.5 font-semibold text-amber-400 mb-1">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Domain Authorization Required in Firebase</span>
+                </div>
+                <p className="text-slate-400 mb-2">
+                  Firebase requires your deployed domain to be added to the whitelist.
+                </p>
+                <div className="flex items-center justify-between gap-2 p-1.5 rounded bg-slate-950/80 border border-slate-800 text-[11px] font-mono text-slate-200">
+                  <span className="truncate">{domainError}</span>
+                  <button
+                    type="button"
+                    onClick={copyDomainToClipboard}
+                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-sans font-medium transition-colors shrink-0"
+                  >
+                    {copiedDomain ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500">
+                  Go to <strong className="text-slate-400">Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</strong> and add this domain.
+                </p>
+              </div>
+            )}
 
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">

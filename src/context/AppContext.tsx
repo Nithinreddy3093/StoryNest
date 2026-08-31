@@ -401,7 +401,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     } catch (error: any) {
       console.error('Google Sign-in failed:', error);
-      addToast(error.message || 'Google Sign-in failed. Please try again.', 'error');
+      if (error?.code === 'auth/unauthorized-domain') {
+        const currentHostname = window.location.hostname;
+        addToast(
+          `Domain "${currentHostname}" is not authorized in Firebase. Please add "${currentHostname}" to Firebase Console -> Authentication -> Settings -> Authorized domains.`,
+          'error'
+        );
+      } else if (error?.code === 'auth/popup-closed-by-user') {
+        addToast('Sign-in cancelled.', 'info');
+      } else if (error?.code === 'auth/popup-blocked') {
+        addToast('Sign-in popup was blocked by your browser. Please allow popups for this site.', 'warning');
+      } else {
+        addToast(error.message || 'Google Sign-in failed. Please try again.', 'error');
+      }
       return false;
     }
   };
