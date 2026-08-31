@@ -1,0 +1,196 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'mudiyamnamitha7@gmail.com') ||
+        (request.auth.token.email.lower() == 'mudiyamnamitha7@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Entity Validators
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.role is string && (data.role == 'admin' || data.role == 'author' || data.role == 'reader') &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('username' in data) || (data.username is string && data.username.size() <= 50)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
+             (!('penName' in data) || (data.penName is string && data.penName.size() <= 100)) &&
+             (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 2000)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000)) &&
+             (!('accountPrivacy' in data) || (data.accountPrivacy is string && (data.accountPrivacy == 'public' || data.accountPrivacy == 'private'))) &&
+             (!('isPrivate' in data) || (data.isPrivate is bool)) &&
+             (!('followers' in data) || (data.followers is list && data.followers.size() <= 10000)) &&
+             (!('following' in data) || (data.following is list && data.following.size() <= 10000)) &&
+             (!('followRequests' in data) || (data.followRequests is list && data.followRequests.size() <= 5000)) &&
+             (!('website' in data) || (data.website is string && data.website.size() <= 300)) &&
+             (!('instagramHandle' in data) || (data.instagramHandle is string && data.instagramHandle.size() <= 100)) &&
+             (!('bookmarks' in data) || (data.bookmarks is list && data.bookmarks.size() <= 500)) &&
+             (!('bookmarkedStoryIds' in data) || (data.bookmarkedStoryIds is list && data.bookmarkedStoryIds.size() <= 500)) &&
+             (!('likedStoryIds' in data) || (data.likedStoryIds is list && data.likedStoryIds.size() <= 1000)) &&
+             (!('readingHistory' in data) || (data.readingHistory is list && data.readingHistory.size() <= 500)) &&
+             (!('readingTheme' in data) || (data.readingTheme is string && (data.readingTheme == 'dark' || data.readingTheme == 'sepia' || data.readingTheme == 'light' || data.readingTheme == 'midnight'))) &&
+             (!('fontSize' in data) || (data.fontSize is number)) &&
+             (!('autoScroll' in data) || (data.autoScroll is bool)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
+    function isValidFollow(data) {
+      return data.id is string && data.id.size() <= 256 &&
+             data.followerId is string && data.followerId.size() <= 128 &&
+             data.followingId is string && data.followingId.size() <= 128 &&
+             data.status is string && (data.status == 'following' || data.status == 'pending' || data.status == 'rejected') &&
+             (!('followerName' in data) || (data.followerName is string && data.followerName.size() <= 100)) &&
+             (!('followerUsername' in data) || (data.followerUsername is string && data.followerUsername.size() <= 50)) &&
+             (!('followerAvatar' in data) || (data.followerAvatar is string && data.followerAvatar.size() <= 2000)) &&
+             (!('followingName' in data) || (data.followingName is string && data.followingName.size() <= 100)) &&
+             (!('followingUsername' in data) || (data.followingUsername is string && data.followingUsername.size() <= 50)) &&
+             (!('followingAvatar' in data) || (data.followingAvatar is string && data.followingAvatar.size() <= 2000)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
+    function isValidNotification(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.recipientId is string && data.recipientId.size() <= 128 &&
+             data.type is string && (data.type == 'follow_request' || data.type == 'follow_accepted' || data.type == 'new_follower' || data.type == 'story_like') &&
+             data.actorId is string && data.actorId.size() <= 128 &&
+             data.actorName is string && data.actorName.size() <= 100 &&
+             data.read is bool &&
+             (!('actorUsername' in data) || (data.actorUsername is string && data.actorUsername.size() <= 50)) &&
+             (!('actorAvatar' in data) || (data.actorAvatar is string && data.actorAvatar.size() <= 2000)) &&
+             (!('storyId' in data) || (data.storyId is string && data.storyId.size() <= 128)) &&
+             (!('storyTitle' in data) || (data.storyTitle is string && data.storyTitle.size() <= 200)) &&
+             (!('message' in data) || (data.message is string && data.message.size() <= 500)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100));
+    }
+
+    function isValidStory(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
+             data.author is string && data.author.size() <= 100 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             data.description is string && data.description.size() <= 5000 &&
+             data.genre is string && data.genre.size() <= 50 &&
+             data.status is string && (data.status == 'published' || data.status == 'pending' || data.status == 'draft' || data.status == 'rejected') &&
+             data.chapters is list && data.chapters.size() <= 200 &&
+             (!('visibility' in data) || (data.visibility is string && (data.visibility == 'public' || data.visibility == 'private' || data.visibility == 'unlisted'))) &&
+             (!('secondaryGenre' in data) || (data.secondaryGenre is string && data.secondaryGenre.size() <= 50)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 50)) &&
+             (!('coverImage' in data) || (data.coverImage is string && data.coverImage.size() <= 2000000)) &&
+             (!('pdfUrl' in data) || (data.pdfUrl is string && data.pdfUrl.size() <= 10000)) &&
+             (!('pdfStoragePath' in data) || (data.pdfStoragePath is string && data.pdfStoragePath.size() <= 500)) &&
+             (!('pdfFileName' in data) || (data.pdfFileName is string && data.pdfFileName.size() <= 500)) &&
+             (!('pdfFileSize' in data) || (data.pdfFileSize is string && data.pdfFileSize.size() <= 100)) &&
+             (!('hasSelectableText' in data) || (data.hasSelectableText is bool)) &&
+             (!('pageCount' in data) || (data.pageCount is number)) &&
+             (!('extractedText' in data) || (data.extractedText is string && data.extractedText.size() <= 200000)) &&
+             (!('language' in data) || (data.language is string && data.language.size() <= 50)) &&
+             (!('views' in data) || (data.views is number)) &&
+             (!('likes' in data) || (data.likes is number)) &&
+             (!('rankingScore' in data) || (data.rankingScore is number)) &&
+             (!('featured' in data) || (data.featured is bool)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500));
+    }
+
+    function isValidReport(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.storyId is string && data.storyId.size() <= 128 &&
+             data.reason is string && (data.reason == 'copyright' || data.reason == 'inappropriate' || data.reason == 'spam' || data.reason == 'other') &&
+             data.details is string && data.details.size() <= 2000 &&
+             data.status is string && (data.status == 'pending' || data.status == 'reviewed' || data.status == 'dismissed') &&
+             (!('storyTitle' in data) || (data.storyTitle is string && data.storyTitle.size() <= 200)) &&
+             (!('reporterEmail' in data) || (data.reporterEmail is string && data.reporterEmail.size() <= 150));
+    }
+
+    function isValidContact(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.subject is string && data.subject.size() <= 200 &&
+             data.message is string && data.message.size() <= 3000 &&
+             data.status is string && (data.status == 'unread' || data.status == 'read');
+    }
+
+    // Collections rules
+
+    // 1. Users
+    match /users/{userId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidUser(incoming());
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidUser(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    // 2. Follows
+    match /follows/{followId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidId(followId) && isValidFollow(incoming());
+      allow update: if isSignedIn() && isValidId(followId) && isValidFollow(incoming());
+      allow delete: if isValidId(followId) && (isAdmin() || (isSignedIn() && (existing().followerId == request.auth.uid || existing().followingId == request.auth.uid)) || !isSignedIn());
+    }
+
+    // 3. Notifications
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && (resource.data.recipientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming());
+      allow update, delete: if isSignedIn() && isValidId(notificationId) && (existing().recipientId == request.auth.uid || isAdmin());
+    }
+
+    // 4. Admins
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 5. Stories (Digital reading library)
+    match /stories/{storyId} {
+      allow get, list: if true;
+      allow create: if isValidId(storyId) && isValidStory(incoming());
+      allow update: if isValidId(storyId) && isValidStory(incoming());
+      allow delete: if isValidId(storyId) && (isAdmin() || (isSignedIn() && existing().authorId == request.auth.uid) || !isSignedIn());
+    }
+
+    // 6. Reports
+    match /reports/{reportId} {
+      allow create: if isValidId(reportId) && isValidReport(incoming());
+      allow get, list, update, delete: if isAdmin();
+    }
+
+    // 7. Contacts
+    match /contacts/{contactId} {
+      allow create: if isValidId(contactId) && isValidContact(incoming());
+      allow get, list, update, delete: if isAdmin();
+    }
+  }
+}

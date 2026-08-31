@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with reading preferences, social follow lists, and privacy settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "User UID" },
+        "name": { "type": "string", "description": "Full name", "maxLength": 100 },
+        "displayName": { "type": "string", "description": "Display name", "maxLength": 100 },
+        "username": { "type": "string", "description": "Unique username handle", "maxLength": 50, "pattern": "^[a-z0-9_]{3,30}$" },
+        "email": { "type": "string", "description": "User email address", "maxLength": 150 },
+        "avatar": { "type": "string", "description": "Avatar image URL", "maxLength": 1000 },
+        "role": { "type": "string", "enum": ["admin", "author", "reader"], "description": "User platform role" },
+        "bio": { "type": "string", "description": "Short bio or tagline", "maxLength": 500 },
+        "penName": { "type": "string", "description": "Author alias / pen name", "maxLength": 100 },
+        "joinedDate": { "type": "string", "description": "Joined date string" },
+        "accountPrivacy": { "type": "string", "enum": ["public", "private"], "description": "Account privacy setting" },
+        "isPrivate": { "type": "boolean", "description": "Instagram style private profile toggle" },
+        "followers": { "type": "array", "description": "List of follower user IDs" },
+        "following": { "type": "array", "description": "List of following user IDs" },
+        "followRequests": { "type": "array", "description": "List of pending follow request user IDs" },
+        "website": { "type": "string", "description": "Personal website or portfolio link", "maxLength": 300 },
+        "instagramHandle": { "type": "string", "description": "Instagram handle / username", "maxLength": 100 },
+        "bookmarks": { "type": "array", "description": "List of bookmarked story IDs" },
+        "bookmarkedStoryIds": { "type": "array", "description": "List of bookmarked story IDs" },
+        "likedStoryIds": { "type": "array", "description": "List of liked story IDs" },
+        "readingHistory": { "type": "array", "description": "Reading progress history" },
+        "readingTheme": { "type": "string", "enum": ["dark", "sepia", "light", "midnight"], "description": "Preferred reading theme" },
+        "fontSize": { "type": "number", "description": "Preferred reader font size" },
+        "autoScroll": { "type": "boolean", "description": "Auto scroll preference" },
+        "createdAt": { "type": "string", "description": "Account creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Account last update timestamp" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "FollowRelation": {
+      "title": "FollowRelation",
+      "description": "Follow relationship state between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Follow record ID (e.g. followerId_followingId)" },
+        "followerId": { "type": "string", "description": "Follower user UID" },
+        "followerName": { "type": "string", "description": "Follower display name", "maxLength": 100 },
+        "followerUsername": { "type": "string", "description": "Follower handle", "maxLength": 50 },
+        "followerAvatar": { "type": "string", "description": "Follower avatar URL", "maxLength": 1000 },
+        "followingId": { "type": "string", "description": "Followed user UID" },
+        "followingName": { "type": "string", "description": "Followed user display name", "maxLength": 100 },
+        "followingUsername": { "type": "string", "description": "Followed user handle", "maxLength": 50 },
+        "followingAvatar": { "type": "string", "description": "Followed user avatar URL", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["following", "pending", "rejected"], "description": "Follow state" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp" }
+      },
+      "required": ["id", "followerId", "followingId", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notifications for follows and interactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Notification ID" },
+        "recipientId": { "type": "string", "description": "Recipient user UID" },
+        "type": { "type": "string", "enum": ["follow_request", "follow_accepted", "new_follower", "story_like"], "description": "Notification type" },
+        "actorId": { "type": "string", "description": "Triggering user UID" },
+        "actorName": { "type": "string", "description": "Triggering user name", "maxLength": 100 },
+        "actorUsername": { "type": "string", "description": "Triggering user handle", "maxLength": 50 },
+        "actorAvatar": { "type": "string", "description": "Triggering user avatar", "maxLength": 1000 },
+        "storyId": { "type": "string", "description": "Associated story ID", "maxLength": 128 },
+        "storyTitle": { "type": "string", "description": "Associated story title", "maxLength": 200 },
+        "message": { "type": "string", "description": "Notification message summary", "maxLength": 500 },
+        "read": { "type": "boolean", "description": "Read status" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "recipientId", "type", "actorId", "actorName", "read"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Platform administrators reference for access control",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Admin email" },
+        "role": { "type": "string", "description": "Admin role", "enum": ["admin"] },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["email", "role"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "Story published or submitted on StoryNest",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique story ID", "maxLength": 128 },
+        "title": { "type": "string", "description": "Story title", "maxLength": 200 },
+        "author": { "type": "string", "description": "Author name", "maxLength": 100 },
+        "authorId": { "type": "string", "description": "Author user ID", "maxLength": 128 },
+        "description": { "type": "string", "description": "Story synopsis", "maxLength": 2000 },
+        "genre": { "type": "string", "description": "Story primary genre", "maxLength": 50 },
+        "secondaryGenre": { "type": "string", "description": "Optional secondary genre", "maxLength": 50 },
+        "tags": { "type": "array", "description": "Array of tag keywords" },
+        "coverImage": { "type": "string", "description": "Story cover URL", "maxLength": 1000 },
+        "pdfUrl": { "type": "string", "description": "PDF download or viewer link", "maxLength": 1000 },
+        "pdfFileName": { "type": "string", "description": "Uploaded PDF file name", "maxLength": 255 },
+        "pdfFileSize": { "type": "string", "description": "PDF size string", "maxLength": 50 },
+        "language": { "type": "string", "description": "Story language", "maxLength": 50 },
+        "createdAt": { "type": "string", "description": "Submission date" },
+        "updatedAt": { "type": "string", "description": "Last updated date" },
+        "views": { "type": "number", "description": "Total view count" },
+        "likes": { "type": "number", "description": "Total likes count" },
+        "status": { "type": "string", "enum": ["published", "pending", "draft", "rejected"], "description": "Publication status" },
+        "visibility": { "type": "string", "enum": ["public", "private", "unlisted"], "description": "Story visibility setting" },
+        "rankingScore": { "type": "number", "description": "Calculated leaderboard ranking score" },
+        "featured": { "type": "boolean", "description": "Whether story is featured" },
+        "chapters": { "type": "array", "description": "Story chapter list" },
+        "rejectionReason": { "type": "string", "description": "Editorial rejection feedback", "maxLength": 500 }
+      },
+      "required": ["id", "title", "author", "authorId", "description", "genre", "status", "chapters"]
+    },
+    "StoryReport": {
+      "title": "StoryReport",
+      "description": "User report for content moderation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Report ID" },
+        "storyId": { "type": "string", "description": "Reported story ID" },
+        "storyTitle": { "type": "string", "description": "Reported story title", "maxLength": 200 },
+        "reporterEmail": { "type": "string", "description": "Reporter contact email", "maxLength": 150 },
+        "reason": { "type": "string", "enum": ["copyright", "inappropriate", "spam", "other"], "description": "Report reason" },
+        "details": { "type": "string", "description": "Detailed explanation", "maxLength": 2000 },
+        "createdAt": { "type": "string", "description": "Report timestamp" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed"], "description": "Moderation status" }
+      },
+      "required": ["id", "storyId", "reason", "details", "status"]
+    },
+    "ContactSubmission": {
+      "title": "ContactSubmission",
+      "description": "Inquiry submitted through the Contact Us portal",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Message ID" },
+        "name": { "type": "string", "description": "Sender name", "maxLength": 100 },
+        "email": { "type": "string", "description": "Sender email", "maxLength": 150 },
+        "subject": { "type": "string", "description": "Message subject", "maxLength": 200 },
+        "message": { "type": "string", "description": "Message body", "maxLength": 3000 },
+        "createdAt": { "type": "string", "description": "Submission timestamp" },
+        "status": { "type": "string", "enum": ["unread", "read"], "description": "Read status" }
+      },
+      "required": ["id", "name", "email", "subject", "message", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and reading state"
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/FollowRelation" },
+      "description": "Follow relationships between users"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User in-app notifications for follows and activity"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Administrator user records"
+    },
+    "/stories/{storyId}": {
+      "schema": { "$ref": "#/entities/Story" },
+      "description": "Stories and chapters library"
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/StoryReport" },
+      "description": "Moderation reports submitted by users"
+    },
+    "/contacts/{contactId}": {
+      "schema": { "$ref": "#/entities/ContactSubmission" },
+      "description": "Contact form submissions"
+    }
+  }
+}
