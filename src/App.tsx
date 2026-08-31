@@ -207,10 +207,16 @@ const AppContent: React.FC = () => {
       return <StoriesPage navigate={navigate} initialGenre={genre} />;
     }
 
-    // 3. Profile Routes: 'profile:username', 'profile:my-stories', 'user:userId', etc.
-    if (currentRoute.startsWith('profile:') || currentRoute.startsWith('profile/') || currentRoute.startsWith('user:')) {
+    // 3. Profile & Author Routes: 'profile:username', 'profile:my-stories', 'user:userId', 'author:name', etc.
+    if (
+      currentRoute.startsWith('profile:') ||
+      currentRoute.startsWith('profile/') ||
+      currentRoute.startsWith('user:') ||
+      currentRoute.startsWith('author:')
+    ) {
       const separator = currentRoute.includes(':') ? ':' : '/';
-      const subroute = currentRoute.split(separator)[1];
+      const parts = currentRoute.split(separator);
+      const subroute = parts.slice(1).join(separator);
       return <ProfilePage navigate={navigate} subroute={subroute} />;
     }
 

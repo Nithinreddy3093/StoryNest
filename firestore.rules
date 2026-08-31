@@ -42,8 +42,8 @@ service cloud.firestore {
              (!('username' in data) || (data.username is string && data.username.size() <= 50)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
              (!('penName' in data) || (data.penName is string && data.penName.size() <= 100)) &&
-             (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 2000)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000)) &&
+             (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 2000000)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000000)) &&
              (!('accountPrivacy' in data) || (data.accountPrivacy is string && (data.accountPrivacy == 'public' || data.accountPrivacy == 'private'))) &&
              (!('isPrivate' in data) || (data.isPrivate is bool)) &&
              (!('followers' in data) || (data.followers is list && data.followers.size() <= 10000)) &&
@@ -69,10 +69,10 @@ service cloud.firestore {
              data.status is string && (data.status == 'following' || data.status == 'pending' || data.status == 'rejected') &&
              (!('followerName' in data) || (data.followerName is string && data.followerName.size() <= 100)) &&
              (!('followerUsername' in data) || (data.followerUsername is string && data.followerUsername.size() <= 50)) &&
-             (!('followerAvatar' in data) || (data.followerAvatar is string && data.followerAvatar.size() <= 2000)) &&
+             (!('followerAvatar' in data) || (data.followerAvatar is string && data.followerAvatar.size() <= 2000000)) &&
              (!('followingName' in data) || (data.followingName is string && data.followingName.size() <= 100)) &&
              (!('followingUsername' in data) || (data.followingUsername is string && data.followingUsername.size() <= 50)) &&
-             (!('followingAvatar' in data) || (data.followingAvatar is string && data.followingAvatar.size() <= 2000)) &&
+             (!('followingAvatar' in data) || (data.followingAvatar is string && data.followingAvatar.size() <= 2000000)) &&
              (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
     }
@@ -85,7 +85,7 @@ service cloud.firestore {
              data.actorName is string && data.actorName.size() <= 100 &&
              data.read is bool &&
              (!('actorUsername' in data) || (data.actorUsername is string && data.actorUsername.size() <= 50)) &&
-             (!('actorAvatar' in data) || (data.actorAvatar is string && data.actorAvatar.size() <= 2000)) &&
+             (!('actorAvatar' in data) || (data.actorAvatar is string && data.actorAvatar.size() <= 2000000)) &&
              (!('storyId' in data) || (data.storyId is string && data.storyId.size() <= 128)) &&
              (!('storyTitle' in data) || (data.storyTitle is string && data.storyTitle.size() <= 200)) &&
              (!('message' in data) || (data.message is string && data.message.size() <= 500)) &&

@@ -33,28 +33,30 @@ export const AboutPage: React.FC<AboutPageProps> = ({ navigate }) => {
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100">
-      {/* Hero Banner */}
-      <section className="relative min-h-[380px] sm:min-h-[440px] flex items-center justify-center text-center overflow-hidden border-b border-slate-800">
+      {/* Hero Banner with Black & White Shore Wallpaper */}
+      <section className="relative min-h-[420px] sm:min-h-[480px] flex items-center justify-center text-center overflow-hidden border-b border-slate-800">
         <div
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 bg-cover bg-center filter grayscale contrast-125"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=2000&auto=format&fit=crop')`,
+            backgroundImage: `url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=2000&auto=format&fit=crop')`,
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-[#070b14]/85 to-black/60" />
+          {/* Shattered Particle & Crack Atmospheric Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-[#070b14]/80 to-black/75" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#070b14_85%)]" />
         </div>
 
         <div className="relative z-10 max-w-3xl mx-auto px-4 py-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-4">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-4 shadow-lg backdrop-blur-md">
             <Sparkles className="w-3.5 h-3.5" /> About StoryNest
           </div>
 
-          <h1 className="font-serif-heading text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-50 leading-tight">
+          <h1 className="font-serif-heading text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-50 leading-tight drop-shadow-md">
             Stories born from <br className="hidden sm:inline" />
             <span className="text-amber-400 font-normal italic">real life & heartfelt regrets.</span>
           </h1>
 
-          <p className="text-xs sm:text-sm text-slate-300 mt-4 max-w-xl mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-300 mt-4 max-w-xl mx-auto leading-relaxed drop-shadow">
             StoryNest is a sanctuary for authentic, vulnerable narratives — written not to impress algorithms, but to give voice to the memories, mistakes, and unspoken apologies we carry in our souls.
           </p>
         </div>
@@ -71,11 +73,19 @@ export const AboutPage: React.FC<AboutPageProps> = ({ navigate }) => {
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               {/* Author Photo & Profile Card */}
               <div className="lg:col-span-4 flex flex-col items-center text-center">
-                <div className="relative w-32 h-32 sm:w-40 sm:h-40 rounded-full p-1.5 bg-gradient-to-tr from-amber-500 via-amber-300 to-rose-400 shadow-xl mb-4">
+                <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full p-1.5 bg-gradient-to-tr from-amber-500 via-amber-300 to-rose-400 shadow-2xl mb-4 group cursor-pointer"
+                     onClick={() => navigate('profile')}
+                     title="View or edit author profile"
+                >
                   <img
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop"
-                    alt="Author Nithin Reddy"
-                    className="w-full h-full object-cover rounded-full"
+                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=600"
+                    alt="Author Nithin Reddy (Signature Katana & Suit)"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300 shadow-inner"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop';
+                    }}
                   />
                   <div className="absolute bottom-1 right-2 p-2 bg-amber-500 rounded-full text-slate-950 shadow-md">
                     <Feather className="w-4 h-4" />

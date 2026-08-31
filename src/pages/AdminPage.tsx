@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Story, StoryReport } from '../types';
+import { DeleteStoryModal } from '../components/DeleteStoryModal';
 import {
   ShieldCheck,
   CheckCircle,
@@ -35,6 +36,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ navigate }) => {
   const [activeTab, setActiveTab] = useState<'pending' | 'stories' | 'reports' | 'contacts'>('pending');
   const [rejectReason, setRejectReason] = useState<string>('Does not meet editorial guidelines');
   const [rejectModalStory, setRejectModalStory] = useState<Story | null>(null);
+  const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
+  const [isDeletingStory, setIsDeletingStory] = useState(false);
 
   if (currentUser?.role !== 'admin') {
     return (
@@ -268,11 +271,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ navigate }) => {
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Delete "${s.title}" permanently?`)) {
-                            deleteStory(s.id);
-                          }
-                        }}
+                        onClick={() => setStoryToDelete(s)}
                         className="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-rose-400 transition-colors"
                         title="Delete"
                       >
@@ -408,6 +407,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ navigate }) => {
           </div>
         </div>
       )}
+
+      {/* Delete Story Modal */}
+      <DeleteStoryModal
+        isOpen={!!storyToDelete}
+        story={storyToDelete}
+        onClose={() => setStoryToDelete(null)}
+        onConfirm={async (storyId) => {
+          setIsDeletingStory(true);
+          try {
+            await deleteStory(storyId);
+            setStoryToDelete(null);
+          } finally {
+            setIsDeletingStory(false);
+          }
+        }}
+        isDeleting={isDeletingStory}
+      />
     </div>
   );
 

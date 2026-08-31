@@ -1336,6 +1336,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteStory = async (storyId: string) => {
     setStories((prev) => prev.filter((s) => s.id !== storyId));
+    if (currentUser) {
+      setCurrentUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          bookmarks: (prev.bookmarks || []).filter((id) => id !== storyId),
+          bookmarkedStoryIds: (prev.bookmarkedStoryIds || []).filter((id) => id !== storyId),
+          likedStoryIds: (prev.likedStoryIds || []).filter((id) => id !== storyId),
+          readingHistory: (prev.readingHistory || []).filter((h) => h.storyId !== storyId),
+        };
+      });
+    }
     try {
       await deleteDoc(doc(db, 'stories', storyId));
     } catch (error) {

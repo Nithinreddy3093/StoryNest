@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext';
 import { User, Story, ReaderTheme } from '../types';
 import { StoryCard } from '../components/StoryCard';
 import { FollowListModal } from '../components/FollowListModal';
+import { DeleteStoryModal } from '../components/DeleteStoryModal';
+import { EditAvatarModal } from '../components/EditAvatarModal';
 import {
   User as UserIcon,
   BookOpen,
@@ -29,6 +31,8 @@ import {
   Palette,
   Type,
   Users,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -84,7 +88,37 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
   const [fontSize, setFontSize] = useState<number>(16);
   const [autoScroll, setAutoScroll] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
+  const [isDeletingStory, setIsDeletingStory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Handle direct avatar photo update from modal
+  const handleSaveAvatar = async (newAvatarUrl: string) => {
+    setAvatar(newAvatarUrl);
+    try {
+      await updateUserProfile({
+        avatar: newAvatarUrl,
+        photoURL: newAvatarUrl,
+      });
+      addToast('Profile picture updated successfully!', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to update avatar', 'error');
+    }
+  };
+
+  // Handle story deletion confirmation
+  const handleConfirmDeleteStory = async (storyId: string) => {
+    setIsDeletingStory(true);
+    try {
+      await deleteStory(storyId);
+      setStoryToDelete(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to delete story', 'error');
+    } finally {
+      setIsDeletingStory(false);
+    }
+  };
 
   // Determine if viewing own profile or another user
   const isOwnProfile =
@@ -287,13 +321,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
         <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
           {/* Avatar & User Details */}
           <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-6 flex-1 min-w-0">
-            <div className="relative shrink-0">
+            <div className="relative shrink-0 group">
               <img
                 src={profileUser.avatar}
                 alt={profileUser.name}
                 referrerPolicy="no-referrer"
                 className="w-20 h-20 sm:w-28 sm:h-28 rounded-full object-cover border-2 border-amber-500/40 shadow-xl ring-4 ring-black/40"
               />
+              {isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarModalOpen(true)}
+                  className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-bold transition-opacity backdrop-blur-xs cursor-pointer shadow-lg"
+                  title="Change Profile Picture"
+                  aria-label="Change Profile Picture"
+                >
+                  <Camera className="w-5 h-5 text-amber-400 mb-0.5" />
+                  <span>Edit Photo</span>
+                </button>
+              )}
               {isProfilePrivate ? (
                 <div
                   className="absolute -bottom-1 -right-1 p-1 sm:p-1.5 bg-slate-900 rounded-full border border-slate-700 text-amber-400 shadow-md"
@@ -647,12 +693,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
                           </button>
                           {isOwnProfile && (
                             <button
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to delete "${story.title}"?`)) {
-                                  deleteStory(story.id);
-                                }
-                              }}
-                              className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-400 bg-slate-900/60 rounded-lg transition-colors"
+                              onClick={() => setStoryToDelete(story)}
+                              className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 bg-slate-900/60 rounded-lg transition-colors border border-transparent hover:border-rose-500/20"
                               title="Delete story"
                               aria-label="Delete story"
                             >
@@ -968,16 +1010,35 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Avatar Image URL
-                    </label>
-                    <input
-                      type="url"
-                      value={avatar}
-                      onChange={(e) => setAvatar(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30"
-                    />
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Profile Picture
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setAvatarModalOpen(true)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-400 hover:text-amber-300 transition-colors"
+                      >
+                        <Camera className="w-3 h-3" />
+                        <span>Upload / Presets</span>
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={avatar.startsWith('data:') ? 'Custom Uploaded Photo' : avatar}
+                        onChange={(e) => setAvatar(e.target.value)}
+                        placeholder="https://..."
+                        className="flex-1 bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAvatarModalOpen(true)}
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-semibold rounded-xl border border-slate-700 shrink-0"
+                      >
+                        Change
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1156,6 +1217,23 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
           </div>
         )}
       </AnimatePresence>
+
+      {/* Delete Story Confirmation Modal */}
+      <DeleteStoryModal
+        isOpen={!!storyToDelete}
+        story={storyToDelete}
+        onClose={() => setStoryToDelete(null)}
+        onConfirm={handleConfirmDeleteStory}
+        isDeleting={isDeletingStory}
+      />
+
+      {/* Edit Avatar & Photo Modal */}
+      <EditAvatarModal
+        isOpen={avatarModalOpen}
+        currentAvatar={avatar || currentUser?.avatar || ''}
+        onClose={() => setAvatarModalOpen(false)}
+        onSaveAvatar={handleSaveAvatar}
+      />
     </div>
   );
 };
