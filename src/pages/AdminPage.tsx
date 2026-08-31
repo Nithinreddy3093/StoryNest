@@ -140,11 +140,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ navigate }) => {
                 className="bg-[#0b111e] border border-amber-500/30 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start justify-between gap-6"
               >
                 <div className="flex gap-4 w-full md:w-auto">
-                  <img
-                    src={story.coverImage}
-                    alt={story.title}
-                    className="w-24 h-32 object-cover rounded-xl shrink-0 border border-slate-800"
-                  />
+                  <div className="relative w-24 sm:w-28 aspect-[3/4] rounded-xl overflow-hidden shrink-0 border border-slate-800 bg-slate-950 shadow-md">
+                    <img
+                      src={story.coverImage}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+                    />
+                    <img
+                      src={story.coverImage}
+                      alt={story.title}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                      }}
+                      className="relative z-[1] w-full h-full object-cover"
+                    />
+                  </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
@@ -231,11 +243,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({ navigate }) => {
                 {stories.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-900/40 transition-colors">
                     <td className="p-4">
-                      <img
-                        src={s.coverImage}
-                        alt={s.title}
-                        className="w-10 h-12 object-cover rounded-md border border-slate-800"
-                      />
+                      <div className="relative w-10 aspect-[3/4] rounded-md overflow-hidden border border-slate-800 bg-slate-950">
+                        <img
+                          src={s.coverImage}
+                          alt={s.title}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src =
+                              'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                          }}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                     </td>
                     <td className="p-4">
                       <p className="font-serif font-bold text-slate-100">{s.title}</p>

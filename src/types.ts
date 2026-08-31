@@ -119,7 +119,21 @@ export interface FollowRelation {
   updatedAt: string;
 }
 
-export type NotificationType = 'follow_request' | 'follow_accepted' | 'new_follower' | 'story_like';
+export type NotificationType = 'follow_request' | 'follow_accepted' | 'new_follower' | 'story_like' | 'story_reflection';
+
+export interface StoryReflection {
+  id: string;
+  storyId: string;
+  userId: string;
+  userName: string;
+  userUsername?: string;
+  userAvatar?: string;
+  userRole?: 'admin' | 'author' | 'reader';
+  content: string;
+  createdAt: string;
+  likes?: number;
+  likedBy?: string[];
+}
 
 export interface AppNotification {
   id: string;

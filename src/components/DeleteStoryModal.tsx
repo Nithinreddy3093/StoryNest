@@ -85,14 +85,26 @@ export const DeleteStoryModal: React.FC<DeleteStoryModalProps> = ({
           {/* Story Snippet Card */}
           <div className="my-4 p-3.5 bg-slate-900/90 border border-slate-800 rounded-2xl flex items-center gap-3.5">
             {story.coverImage ? (
-              <img
-                src={story.coverImage}
-                alt={story.title}
-                referrerPolicy="no-referrer"
-                className="w-14 h-18 sm:w-16 sm:h-20 object-cover rounded-xl border border-slate-700 shrink-0"
-              />
+              <div className="relative w-14 sm:w-16 aspect-[3/4] rounded-xl overflow-hidden border border-slate-700 bg-slate-950 shrink-0">
+                <img
+                  src={story.coverImage}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+                />
+                <img
+                  src={story.coverImage}
+                  alt={story.title}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                  }}
+                  className="relative z-[1] w-full h-full object-cover"
+                />
+              </div>
             ) : (
-              <div className="w-14 h-18 sm:w-16 sm:h-20 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 shrink-0">
+              <div className="w-14 sm:w-16 aspect-[3/4] bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 shrink-0">
                 <BookOpen className="w-6 h-6" />
               </div>
             )}

@@ -1,6 +1,7 @@
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Story } from '../types';
+import { generateStoryPdf } from './pdfGenerator';
 
 // IndexedDB configuration for client-side persistence of uploaded PDF binaries
 const DB_NAME = 'StoryNest_PDF_Storage';
@@ -179,42 +180,51 @@ export async function uploadStoryPdfToStorage(
   }
 
   return {
-    pdfUrl: finalDownloadUrl,
-    pdfStoragePath: storagePath,
+    pdfUrl: isCloudStored ? finalDownloadUrl : '',
+    pdfStoragePath: isCloudStored ? storagePath : '',
     blobUrl,
     isCloudStored,
   };
 }
 
 export async function downloadStoryPdfFile(story: Story): Promise<void> {
-  const fileName = story.pdfFileName || `${story.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+  const fileName = story.pdfFileName || `${(story.title || 'story').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
 
   // 1. Try to load from IndexedDB
-  const localData = await getLocalPdfData(story.id);
-  if (localData) {
-    const blob = new Blob([localData.data], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    triggerBrowserDownload(url, fileName);
-    return;
-  }
-
-  // 2. If story.pdfUrl exists, trigger download
-  if (story.pdfUrl) {
-    try {
-      const response = await fetch(story.pdfUrl);
-      if (!response.ok) throw new Error('Fetch failed');
-      const blob = await response.blob();
+  try {
+    const localData = await getLocalPdfData(story.id);
+    if (localData && localData.data && localData.data.byteLength > 0 && !(localData.data as any).detached) {
+      const blob = new Blob([localData.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       triggerBrowserDownload(url, fileName);
       return;
+    }
+  } catch (err) {
+    console.warn('IndexedDB download check notice:', err);
+  }
+
+  // 2. If story.pdfUrl exists and is a valid remote URL or active blob, attempt fetch
+  if (story.pdfUrl && !story.pdfUrl.startsWith('blob:')) {
+    try {
+      const response = await fetch(story.pdfUrl);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        triggerBrowserDownload(url, fileName);
+        return;
+      }
     } catch (e) {
-      // Fallback: open link directly
-      window.open(story.pdfUrl, '_blank');
-      return;
+      console.warn('Remote PDF download fetch notice:', e);
     }
   }
 
-  throw new Error('No PDF found for this story');
+  // 3. Robust fallback: generate pristine StoryNest PDF on the fly
+  try {
+    generateStoryPdf(story);
+  } catch (genErr) {
+    console.error('Story PDF generation download failed:', genErr);
+    throw new Error('Unable to download PDF for this story.');
+  }
 }
 
 function triggerBrowserDownload(url: string, fileName: string) {

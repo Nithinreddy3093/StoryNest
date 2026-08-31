@@ -159,13 +159,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           {/* Item Preview Card */}
           <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex gap-3 items-center">
             {coverImg ? (
-              <img
-                src={coverImg}
-                alt={title}
-                className="w-14 h-16 rounded-lg object-cover border border-slate-700 shrink-0"
-              />
+              <div className="relative w-14 aspect-[3/4] rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shrink-0">
+                <img
+                  src={coverImg}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+                />
+                <img
+                  src={coverImg}
+                  alt={title}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                  }}
+                  className="relative z-[1] w-full h-full object-cover"
+                />
+              </div>
             ) : (
-              <div className="w-14 h-16 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+              <div className="w-14 aspect-[3/4] rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
                 {story ? <BookOpen className="w-6 h-6" /> : <UserIcon className="w-6 h-6" />}
               </div>
             )}

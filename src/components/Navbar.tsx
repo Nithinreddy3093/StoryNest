@@ -177,11 +177,18 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigate }) => {
                           }}
                           className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-800/80 cursor-pointer transition-colors"
                         >
-                          <img
-                            src={story.coverImage}
-                            alt={story.title}
-                            className="w-9 h-9 object-cover rounded-md"
-                          />
+                          <div className="relative w-8 aspect-[3/4] rounded-md overflow-hidden bg-slate-950 border border-slate-700/50 shrink-0">
+                            <img
+                              src={story.coverImage}
+                              alt={story.title}
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
                           <div className="flex-1 min-w-0">
                             <h5 className="text-xs font-semibold text-slate-200 truncate">
                               {story.title}

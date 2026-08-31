@@ -27,6 +27,11 @@ import {
   Loader2,
   ExternalLink,
   BookOpen,
+  Trash2,
+  Sparkles,
+  Clock,
+  User as UserIcon,
+  LogIn,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -56,6 +61,13 @@ export const StoryReaderPage: React.FC<StoryReaderPageProps> = ({
     getUserByIdOrPenName,
     toggleFollowUser,
     getFollowStatus,
+    reflections,
+    reflectionsLoading,
+    addReflection,
+    deleteReflection,
+    toggleLikeReflection,
+    getStoryReflections,
+    setShowAuthModal,
   } = useApp();
 
   // Story state
@@ -82,16 +94,13 @@ export const StoryReaderPage: React.FC<StoryReaderPageProps> = ({
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
 
-  // Comments / reflections
+  // Reflections / thoughts state
   const [commentInput, setCommentInput] = useState<string>('');
-  const [comments, setComments] = useState<{ id: string; user: string; text: string; time: string }[]>([
-    {
-      id: 'c1',
-      user: 'Priya Sharma',
-      text: 'The prose in this chapter is deeply moving. Felt every single sentence.',
-      time: '2 hours ago',
-    },
-  ]);
+  const [guestNameInput, setGuestNameInput] = useState<string>('');
+  const [isSubmittingReflection, setIsSubmittingReflection] = useState<boolean>(false);
+  const [deletingReflectionId, setDeletingReflectionId] = useState<string | null>(null);
+
+  const storyReflections = getStoryReflections(story?.id || storyId);
 
   // Scroll ref
   const readerContentRef = useRef<HTMLDivElement>(null);
@@ -235,20 +244,61 @@ export const StoryReaderPage: React.FC<StoryReaderPageProps> = ({
     addToast('Story link copied to clipboard!', 'success');
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  const formatReflectionTime = (isoString?: string): string => {
+    if (!isoString) return 'Recently';
+    try {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHours = Math.floor(diffMin / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffSec < 45) return 'Just now';
+      if (diffMin < 60) return `${diffMin}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+      });
+    } catch {
+      return 'Recently';
+    }
+  };
+
+  const handlePostReflection = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentInput.trim()) return;
+    const text = commentInput.trim();
+    if (!text || isSubmittingReflection) return;
 
-    const newComment = {
-      id: 'c-' + Date.now(),
-      user: currentUser?.name || 'Anonymous Reader',
-      text: commentInput.trim(),
-      time: 'Just now',
-    };
+    setIsSubmittingReflection(true);
+    try {
+      const activeStoryId = story?.id || storyId;
+      const result = await addReflection(activeStoryId, text, guestNameInput);
+      if (result) {
+        setCommentInput('');
+      }
+    } catch (err) {
+      console.error('Error posting reflection:', err);
+    } finally {
+      setIsSubmittingReflection(false);
+    }
+  };
 
-    setComments([newComment, ...comments]);
-    setCommentInput('');
-    addToast('Reflection posted!', 'success');
+  const handleDeleteReflection = async (refId: string) => {
+    if (window.confirm('Are you sure you want to remove this reflection?')) {
+      setDeletingReflectionId(refId);
+      await deleteReflection(refId);
+      setDeletingReflectionId(null);
+    }
+  };
+
+  const handleToggleLikeReflection = async (refId: string) => {
+    await toggleLikeReflection(refId);
   };
 
   const handleDownloadOriginalPdf = async () => {
@@ -483,14 +533,25 @@ export const StoryReaderPage: React.FC<StoryReaderPageProps> = ({
             <div className={`p-4 sm:p-5 rounded-2xl border shadow-xl ${getContainerBg()}`}>
               <div className="flex sm:block gap-4 items-center sm:items-start mb-4">
                 <div className="relative aspect-[3/4] w-24 sm:w-full shrink-0 rounded-xl overflow-hidden shadow-lg border border-amber-500/20 bg-slate-950">
+                  {/* Ambient blurred glow */}
+                  <img
+                    src={story.coverImage}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+                  />
                   <img
                     src={story.coverImage}
                     alt={story.title}
-                    className="w-full h-full object-cover"
+                    className="relative z-[1] w-full h-full object-cover"
                     referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                    }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                  <div className="absolute bottom-2 left-2 right-2">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-[2]" />
+                  <div className="absolute bottom-2 left-2 right-2 z-[3]">
                     <span className="px-1.5 py-0.5 rounded-md bg-amber-500/90 text-slate-950 text-[9px] font-bold uppercase tracking-wider">
                       {story.genre}
                     </span>
@@ -718,40 +779,250 @@ export const StoryReaderPage: React.FC<StoryReaderPageProps> = ({
             </div>
 
             {/* Reader Reflections & Notes */}
-            <div className={`p-6 rounded-2xl border shadow-xl ${getContainerBg()}`}>
-              <h3 className="font-serif-heading text-base font-bold mb-3 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-amber-400" />
-                Reader Reflections ({comments.length})
-              </h3>
+            <div className={`p-5 sm:p-7 rounded-2xl border shadow-xl ${getContainerBg()}`}>
+              <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-white/5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                    <MessageSquare className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-serif-heading text-base font-bold text-slate-100 flex items-center gap-2">
+                      Reader Reflections
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-sans font-semibold border border-amber-500/30">
+                        {storyReflections.length}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">Share your thoughts, feelings, and impressions with the author</p>
+                  </div>
+                </div>
 
-              <form onSubmit={handleAddComment} className="flex gap-2 mb-6">
-                <input
-                  type="text"
-                  placeholder="Leave a thoughtful reflection on this story..."
-                  value={commentInput}
-                  onChange={(e) => setCommentInput(e.target.value)}
-                  className="flex-1 bg-black/40 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200 placeholder-slate-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition-colors flex items-center gap-1"
-                >
-                  <span>Post</span>
-                  <Send className="w-3 h-3" />
-                </button>
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Live Reflections</span>
+                </div>
+              </div>
+
+              {/* Reflection Composer */}
+              <form onSubmit={handlePostReflection} className="mb-6 space-y-3 bg-black/25 p-4 rounded-xl border border-white/5">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  {currentUser ? (
+                    <div className="flex items-center gap-2 text-slate-300">
+                      <div className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center overflow-hidden">
+                        {currentUser.avatar ? (
+                          <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-bold text-amber-400">{currentUser.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <span className="font-medium text-slate-200">{currentUser.name}</span>
+                      {currentUser.role === 'admin' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider font-bold">
+                          Admin
+                        </span>
+                      )}
+                      {currentUser.role === 'author' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-wider font-bold">
+                          Author
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <div className="flex items-center gap-2">
+                        <UserIcon className="w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Your Name (or post as Anonymous)"
+                          value={guestNameInput}
+                          onChange={(e) => setGuestNameInput(e.target.value)}
+                          className="bg-black/40 border border-slate-700/80 rounded-md px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAuthModal(true)}
+                        className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+                      >
+                        <LogIn className="w-3 h-3" />
+                        <span>Sign in for verified badge</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <textarea
+                    rows={3}
+                    maxLength={1500}
+                    placeholder="What emotion or thought did this story stir within you? Leave a thoughtful reflection..."
+                    value={commentInput}
+                    onChange={(e) => setCommentInput(e.target.value)}
+                    className="w-full bg-black/40 border border-slate-700/80 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500 text-slate-200 placeholder-slate-500 resize-none leading-relaxed"
+                  />
+                  <div className="absolute bottom-2.5 right-3 text-[10px] text-slate-500">
+                    {commentInput.length} / 1500
+                  </div>
+                </div>
+
+                {/* Quick thought starters */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Quick:</span>
+                    <button
+                      type="button"
+                      onClick={() => setCommentInput((prev) => (prev ? prev + ' ✨ Deeply evocative prose!' : '✨ Deeply evocative prose!'))}
+                      className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition-colors border border-white/5"
+                    >
+                      Evocative prose ✨
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCommentInput((prev) => (prev ? prev + ' 🌿 Beautiful world-building.' : '🌿 Beautiful world-building.'))}
+                      className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition-colors border border-white/5"
+                    >
+                      World-building 🌿
+                    </button>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!commentInput.trim() || isSubmittingReflection}
+                    className="ml-auto px-4 py-2 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                  >
+                    {isSubmittingReflection ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Posting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Post Reflection</span>
+                        <Send className="w-3 h-3" />
+                      </>
+                    )}
+                  </button>
+                </div>
               </form>
 
-              <div className="space-y-3">
-                {comments.map((c) => (
-                  <div key={c.id} className="p-3 rounded-lg bg-black/20 border border-slate-800/80 text-xs">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-semibold text-amber-400">{c.user}</span>
-                      <span className="text-[10px] text-slate-500">{c.time}</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed">{c.text}</p>
-                  </div>
-                ))}
-              </div>
+              {/* Reflections Stream */}
+              {reflectionsLoading ? (
+                <div className="py-8 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                  <span>Loading reflections...</span>
+                </div>
+              ) : storyReflections.length === 0 ? (
+                <div className="text-center py-8 px-4 rounded-xl bg-black/15 border border-dashed border-slate-800">
+                  <BookOpen className="w-7 h-7 text-amber-400/50 mx-auto mb-2" />
+                  <p className="text-xs text-slate-300 font-medium mb-1">No reflections shared yet</p>
+                  <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                    Be the very first reader to kindle the conversation. Share your feelings, reflections, or favorite passages.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  {storyReflections.map((r) => {
+                    const isLikedByMe = currentUser
+                      ? (r.likedBy || []).includes(currentUser.id)
+                      : (r.likedBy || []).includes('guest_' + (sessionStorage.getItem('storynest_guest_id') || ''));
+                    const canDelete =
+                      (currentUser && (currentUser.id === r.userId || currentUser.role === 'admin')) ||
+                      r.userId.startsWith('guest_');
+
+                    return (
+                      <motion.div
+                        key={r.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-xl bg-black/25 border border-slate-800/80 hover:border-slate-700/80 transition-all text-xs"
+                      >
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-amber-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
+                              {r.userAvatar ? (
+                                <img src={r.userAvatar} alt={r.userName} className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="font-bold text-amber-400 text-[11px]">
+                                  {r.userName.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-slate-200">{r.userName}</span>
+                                {r.userUsername && (
+                                  <span className="text-[10px] text-slate-500">@{r.userUsername}</span>
+                                )}
+                                {r.userRole === 'admin' && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                    Admin
+                                  </span>
+                                )}
+                                {(r.userRole === 'author' || r.userId === story?.authorId) && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
+                                    Author ✍️
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>{formatReflectionTime(r.createdAt)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReflection(r.id)}
+                              disabled={deletingReflectionId === r.id}
+                              title="Delete reflection"
+                              className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-red-500/10 transition-colors"
+                            >
+                              {deletingReflectionId === r.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-red-400" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+
+                        <p className="text-slate-300 leading-relaxed whitespace-pre-line pl-9 pr-1">
+                          {r.content}
+                        </p>
+
+                        <div className="flex items-center justify-between pt-2.5 mt-2.5 border-t border-white/5 pl-9">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleLikeReflection(r.id)}
+                            className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${
+                              isLikedByMe
+                                ? 'text-red-400 bg-red-500/10 border border-red-500/20'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                            }`}
+                          >
+                            <Heart className={`w-3.5 h-3.5 ${isLikedByMe ? 'fill-red-400 text-red-400' : ''}`} />
+                            <span>{r.likes || 0}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`"${r.content}" — ${r.userName} on StoryNest`);
+                              addToast('Reflection quote copied!', 'info');
+                            }}
+                            className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+                          >
+                            <Copy className="w-2.5 h-2.5" />
+                            <span>Copy quote</span>
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </main>
 

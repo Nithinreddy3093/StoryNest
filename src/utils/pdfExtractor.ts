@@ -1,15 +1,9 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { Chapter } from '../types';
+import { ensurePdfWorker } from './pdfWorkerInit';
 
 // Configure pdfjs worker
-if (typeof window !== 'undefined') {
-  try {
-    // Attempt standard worker source resolution
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
-  } catch (e) {
-    console.warn('Worker configuration notice:', e);
-  }
-}
+ensurePdfWorker();
 
 export interface ExtractedPdfData {
   fullText: string;

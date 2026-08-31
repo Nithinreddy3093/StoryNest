@@ -33,6 +33,7 @@ import {
   ReadingProgressItem,
   FollowRelation,
   AppNotification,
+  StoryReflection,
 } from '../types';
 
 export interface ToastMessage {
@@ -106,6 +107,14 @@ interface AppContextType {
   isLiked: (storyId: string) => boolean;
   recordView: (storyId: string) => Promise<void>;
 
+  // Reader Reflections & Comments
+  reflections: StoryReflection[];
+  reflectionsLoading: boolean;
+  addReflection: (storyId: string, content: string, guestName?: string) => Promise<StoryReflection | null>;
+  deleteReflection: (reflectionId: string) => Promise<boolean>;
+  toggleLikeReflection: (reflectionId: string) => Promise<boolean>;
+  getStoryReflections: (storyId: string) => StoryReflection[];
+
   // Reading Progress
   readingProgress: Record<string, ReadingProgressItem>;
   updateReadingProgress: (storyId: string, currentChapterOrId: number | string, progressPercentage?: number) => Promise<void>;
@@ -139,6 +148,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Core collections state - ZERO mock data, purely from Firestore
   const [stories, setStories] = useState<Story[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
+  const [reflections, setReflections] = useState<StoryReflection[]>([]);
+  const [reflectionsLoading, setReflectionsLoading] = useState(true);
   const [follows, setFollows] = useState<FollowRelation[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [reports, setReports] = useState<StoryReport[]>([]);
@@ -396,6 +407,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => unsubscribe();
   }, [authReady, firebaseUser, currentUser?.role]);
+
+  // 7. Real-time Reader Reflections listener from Firestore
+  useEffect(() => {
+    setReflectionsLoading(true);
+    const reflectionsRef = collection(db, 'reflections');
+    const unsubscribe = onSnapshot(
+      reflectionsRef,
+      (snapshot) => {
+        const loadedReflections: StoryReflection[] = [];
+        snapshot.forEach((docSnap) => {
+          const r = docSnap.data() as StoryReflection;
+          loadedReflections.push({
+            ...r,
+            id: docSnap.id,
+            likes: typeof r.likes === 'number' ? r.likes : 0,
+            likedBy: Array.isArray(r.likedBy) ? r.likedBy : [],
+          });
+        });
+        // Sort newest first
+        loadedReflections.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setReflections(loadedReflections);
+        setReflectionsLoading(false);
+      },
+      (err) => {
+        console.warn('Reflections listener notice:', err);
+        setReflectionsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Auth Methods
   const signInWithGoogle = async (): Promise<boolean> => {
@@ -1180,6 +1224,148 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Reader Reflections Methods
+  const addReflection = async (
+    storyId: string,
+    content: string,
+    guestName?: string
+  ): Promise<StoryReflection | null> => {
+    const trimmed = content.trim();
+    if (!trimmed) return null;
+
+    const reflectionId = 'ref_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const timestamp = new Date().toISOString();
+
+    const authorName = currentUser?.displayName || currentUser?.name || guestName?.trim() || 'Anonymous Reader';
+    const authorUsername = currentUser?.username || undefined;
+    const authorAvatar = currentUser?.avatar || currentUser?.photoURL || undefined;
+    const authorRole = currentUser?.role || 'reader';
+    const authorUserId = currentUser?.id || ('guest_' + Math.random().toString(36).substring(2, 9));
+
+    const newReflection: StoryReflection = {
+      id: reflectionId,
+      storyId,
+      userId: authorUserId,
+      userName: authorName,
+      userUsername: authorUsername,
+      userAvatar: authorAvatar,
+      userRole: authorRole,
+      content: trimmed,
+      createdAt: timestamp,
+      likes: 0,
+      likedBy: [],
+    };
+
+    // Optimistic UI update
+    setReflections((prev) => [newReflection, ...prev]);
+
+    try {
+      await setDoc(doc(db, 'reflections', reflectionId), newReflection);
+    } catch (error) {
+      console.error('Failed to persist reflection to Firestore:', error);
+      handleFirestoreError(error, OperationType.CREATE, `reflections/${reflectionId}`);
+      return null;
+    }
+
+    // If story has an author who is not the current user, notify author
+    const targetStory = stories.find((s) => s.id === storyId);
+    if (
+      targetStory &&
+      targetStory.authorId &&
+      (!currentUser || targetStory.authorId !== currentUser.id)
+    ) {
+      const notifId = 'notif_' + Date.now();
+      const reflectionNotif: AppNotification = {
+        id: notifId,
+        recipientId: targetStory.authorId,
+        type: 'story_reflection',
+        actorId: authorUserId,
+        actorName: authorName,
+        actorUsername: authorUsername,
+        actorAvatar: authorAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+        storyId: targetStory.id,
+        storyTitle: targetStory.title,
+        message: `left a reflection on "${targetStory.title}": "${trimmed.slice(0, 60)}${trimmed.length > 60 ? '...' : ''}"`,
+        read: false,
+        createdAt: timestamp,
+      };
+      try {
+        await setDoc(doc(db, 'notifications', notifId), reflectionNotif);
+      } catch {
+        // Notification write notice
+      }
+    }
+
+    addToast('Reflection posted successfully!', 'success');
+    return newReflection;
+  };
+
+  const deleteReflection = async (reflectionId: string): Promise<boolean> => {
+    const target = reflections.find((r) => r.id === reflectionId);
+    if (!target) return false;
+
+    const isAuthor = currentUser && target.userId === currentUser.id;
+    const isAdminUser = currentUser?.role === 'admin';
+
+    if (!isAuthor && !isAdminUser && !target.userId.startsWith('guest_')) {
+      addToast('You can only delete your own reflections.', 'error');
+      return false;
+    }
+
+    setReflections((prev) => prev.filter((r) => r.id !== reflectionId));
+
+    try {
+      await deleteDoc(doc(db, 'reflections', reflectionId));
+      addToast('Reflection deleted.', 'info');
+      return true;
+    } catch (error) {
+      console.error('Failed to delete reflection:', error);
+      handleFirestoreError(error, OperationType.DELETE, `reflections/${reflectionId}`);
+      return false;
+    }
+  };
+
+  const toggleLikeReflection = async (reflectionId: string): Promise<boolean> => {
+    const userId = currentUser?.id || 'guest_' + (sessionStorage.getItem('storynest_guest_id') || (() => {
+      const g = Math.random().toString(36).substring(2, 9);
+      sessionStorage.setItem('storynest_guest_id', g);
+      return g;
+    })());
+    
+    const target = reflections.find((r) => r.id === reflectionId);
+    if (!target) return false;
+
+    const likedBy = Array.isArray(target.likedBy) ? target.likedBy : [];
+    const isAlreadyLiked = likedBy.includes(userId);
+    const updatedLikedBy = isAlreadyLiked
+      ? likedBy.filter((id) => id !== userId)
+      : [...likedBy, userId];
+    const newLikesCount = Math.max(0, (target.likes || 0) + (isAlreadyLiked ? -1 : 1));
+
+    setReflections((prev) =>
+      prev.map((r) =>
+        r.id === reflectionId
+          ? { ...r, likes: newLikesCount, likedBy: updatedLikedBy }
+          : r
+      )
+    );
+
+    try {
+      await updateDoc(doc(db, 'reflections', reflectionId), {
+        likes: newLikesCount,
+        likedBy: updatedLikedBy,
+      });
+      return !isAlreadyLiked;
+    } catch (error) {
+      console.warn('Like reflection sync notice:', error);
+      return !isAlreadyLiked;
+    }
+  };
+
+  const getStoryReflections = (storyId: string): StoryReflection[] => {
+    return reflections.filter((r) => r.storyId === storyId);
+  };
+
   // Reading Progress Dict
   const readingProgress: Record<string, ReadingProgressItem> = {};
   if (currentUser && currentUser.readingHistory) {
@@ -1479,6 +1665,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleLike,
         isLiked,
         recordView,
+        reflections,
+        reflectionsLoading,
+        addReflection,
+        deleteReflection,
+        toggleLikeReflection,
+        getStoryReflections,
         readingProgress,
         updateReadingProgress,
         getStoryProgress,

@@ -80,7 +80,7 @@ service cloud.firestore {
     function isValidNotification(data) {
       return data.id is string && data.id.size() <= 128 &&
              data.recipientId is string && data.recipientId.size() <= 128 &&
-             data.type is string && (data.type == 'follow_request' || data.type == 'follow_accepted' || data.type == 'new_follower' || data.type == 'story_like') &&
+             data.type is string && (data.type == 'follow_request' || data.type == 'follow_accepted' || data.type == 'new_follower' || data.type == 'story_like' || data.type == 'story_reflection') &&
              data.actorId is string && data.actorId.size() <= 128 &&
              data.actorName is string && data.actorName.size() <= 100 &&
              data.read is bool &&
@@ -90,6 +90,20 @@ service cloud.firestore {
              (!('storyTitle' in data) || (data.storyTitle is string && data.storyTitle.size() <= 200)) &&
              (!('message' in data) || (data.message is string && data.message.size() <= 500)) &&
              (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100));
+    }
+
+    function isValidReflection(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.storyId is string && data.storyId.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 3000 &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             (!('userUsername' in data) || (data.userUsername is string && data.userUsername.size() <= 50)) &&
+             (!('userAvatar' in data) || (data.userAvatar is string && data.userAvatar.size() <= 2000000)) &&
+             (!('userRole' in data) || (data.userRole is string && (data.userRole == 'admin' || data.userRole == 'author' || data.userRole == 'reader'))) &&
+             (!('likes' in data) || (data.likes is number)) &&
+             (!('likedBy' in data) || (data.likedBy is list && data.likedBy.size() <= 1000));
     }
 
     function isValidStory(data) {
@@ -181,13 +195,21 @@ service cloud.firestore {
       allow delete: if isValidId(storyId) && (isAdmin() || (isSignedIn() && existing().authorId == request.auth.uid) || !isSignedIn());
     }
 
-    // 6. Reports
+    // 6. Reflections (Reader reflections and notes)
+    match /reflections/{reflectionId} {
+      allow get, list: if true;
+      allow create: if isValidId(reflectionId) && isValidReflection(incoming());
+      allow update: if isValidId(reflectionId) && isValidReflection(incoming());
+      allow delete: if isValidId(reflectionId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid) || !isSignedIn());
+    }
+
+    // 7. Reports
     match /reports/{reportId} {
       allow create: if isValidId(reportId) && isValidReport(incoming());
       allow get, list, update, delete: if isAdmin();
     }
 
-    // 7. Contacts
+    // 8. Contacts
     match /contacts/{contactId} {
       allow create: if isValidId(contactId) && isValidContact(incoming());
       allow get, list, update, delete: if isAdmin();

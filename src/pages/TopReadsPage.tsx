@@ -64,12 +64,22 @@ export const TopReadsPage: React.FC<TopReadsPageProps> = ({ navigate }) => {
         </div>
 
         {/* Thumbnail */}
-        <div className="relative w-20 sm:w-24 aspect-[3/4] rounded-lg overflow-hidden shrink-0 bg-slate-900 border border-slate-800">
+        <div className="relative w-20 sm:w-24 aspect-[3/4] rounded-lg overflow-hidden shrink-0 bg-slate-950 border border-slate-800">
+          <img
+            src={story.coverImage}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+          />
           <img
             src={story.coverImage}
             alt={story.title}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+            }}
+            className="relative z-[1] w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
           />
         </div>

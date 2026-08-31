@@ -146,6 +146,25 @@
         "status": { "type": "string", "enum": ["unread", "read"], "description": "Read status" }
       },
       "required": ["id", "name", "email", "subject", "message", "status"]
+    },
+    "StoryReflection": {
+      "title": "StoryReflection",
+      "description": "Reader reflections and thoughtful reviews left on stories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Reflection ID", "maxLength": 128 },
+        "storyId": { "type": "string", "description": "Associated story ID", "maxLength": 128 },
+        "userId": { "type": "string", "description": "User UID who posted the reflection", "maxLength": 128 },
+        "userName": { "type": "string", "description": "Display name of reader", "maxLength": 100 },
+        "userUsername": { "type": "string", "description": "Handle of reader", "maxLength": 50 },
+        "userAvatar": { "type": "string", "description": "Avatar URL of reader", "maxLength": 1000 },
+        "userRole": { "type": "string", "enum": ["admin", "author", "reader"], "description": "Reader role" },
+        "content": { "type": "string", "description": "Thoughtful reflection text", "maxLength": 3000 },
+        "createdAt": { "type": "string", "description": "ISO creation timestamp", "maxLength": 100 },
+        "likes": { "type": "number", "description": "Heart / like count" },
+        "likedBy": { "type": "array", "description": "List of user IDs who liked this reflection" }
+      },
+      "required": ["id", "storyId", "userId", "userName", "content", "createdAt"]
     }
   },
   "firestore": {
@@ -168,6 +187,10 @@
     "/stories/{storyId}": {
       "schema": { "$ref": "#/entities/Story" },
       "description": "Stories and chapters library"
+    },
+    "/reflections/{reflectionId}": {
+      "schema": { "$ref": "#/entities/StoryReflection" },
+      "description": "Reader reflections and notes posted on stories"
     },
     "/reports/{reportId}": {
       "schema": { "$ref": "#/entities/StoryReport" },

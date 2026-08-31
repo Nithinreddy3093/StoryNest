@@ -918,11 +918,17 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
                   {extractedPdfCover && (
                     <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={extractedPdfCover}
-                          alt="Extracted PDF Cover"
-                          className="w-12 h-16 object-cover rounded-md border border-amber-500/50 shadow-md flex-shrink-0"
-                        />
+                        <div className="relative w-12 sm:w-14 aspect-[3/4] rounded-md overflow-hidden border border-amber-500/50 shadow-md flex-shrink-0 bg-slate-950">
+                          <img
+                            src={extractedPdfCover}
+                            alt="Extracted PDF Cover"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src =
+                                'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                            }}
+                          />
+                        </div>
                         <div>
                           <div className="flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -1083,11 +1089,17 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
                               : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                           }`}
                         >
-                          <img
-                            src={extractedPdfCover}
-                            alt="Extracted PDF Cover"
-                            className="w-16 h-22 object-cover rounded-lg border border-amber-500/30 shadow-md"
-                          />
+                          <div className="relative w-16 sm:w-20 aspect-[3/4] rounded-lg overflow-hidden border border-amber-500/30 shadow-md bg-slate-950 shrink-0">
+                            <img
+                              src={extractedPdfCover}
+                              alt="Extracted PDF Cover"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                              }}
+                            />
+                          </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <h4 className="text-xs font-bold text-slate-100">
@@ -1190,11 +1202,17 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
 
                   {/* Active Preview */}
                   <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex items-center gap-3">
-                    <img
-                      src={customCoverUrl || coverImage}
-                      alt="Active cover"
-                      className="w-12 h-16 object-cover rounded-md border border-amber-500/30"
-                    />
+                    <div className="relative w-12 sm:w-14 aspect-[3/4] rounded-md overflow-hidden border border-amber-500/30 bg-slate-950 shrink-0">
+                      <img
+                        src={customCoverUrl || coverImage}
+                        alt="Active cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                        }}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-200">Selected Cover Artwork</p>
                       <p className="text-[11px] text-slate-400 mt-0.5">

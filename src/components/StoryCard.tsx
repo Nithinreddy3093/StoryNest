@@ -37,25 +37,32 @@ export const StoryCard: React.FC<StoryCardProps> = ({ story, onSelectStory }) =>
       className="group relative flex flex-col bg-[#0b111e]/90 border border-slate-800/80 hover:border-amber-500/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-amber-500/5 transition-all duration-300 cursor-pointer"
       onClick={() => onSelectStory(story.id)}
     >
-      {/* Cover Image Container */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-900">
+      {/* Cover Image Container with Authentic 3:4 Book Ratio */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-slate-950">
+        {/* Soft Ambient Blurred Backing */}
+        <img
+          src={story.coverImage}
+          alt=""
+          aria-hidden="true"
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+        />
+
+        {/* Primary Story Cover Image */}
         <img
           src={story.coverImage}
           alt={story.title}
           referrerPolicy="no-referrer"
-          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src =
+              'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+          }}
+          className="relative z-[1] w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
         />
 
         {/* Ambient Dark Gradient on Cover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0b111e] via-transparent to-black/30 pointer-events-none" />
-
-        {/* Story Title Overlay */}
-        <div className="absolute inset-x-2 top-3 sm:top-4 text-center pointer-events-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-          <h4 className="font-serif-heading italic text-base sm:text-xl font-medium text-amber-100/95 tracking-wide line-clamp-2 px-1 sm:px-2">
-            {story.title}
-          </h4>
-        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b111e] via-transparent to-black/30 pointer-events-none z-[2]" />
 
         {/* Floating Actions: Share & Bookmark */}
         <div className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 flex items-center gap-1.5 z-10">

@@ -3,6 +3,8 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { useApp } from '../context/AppContext';
 import { Story, User } from '../types';
 import { getLocalPdfData, downloadStoryPdfFile } from '../utils/pdfStorage';
+import { generateStoryPdfUint8Array } from '../utils/pdfGenerator';
+import { ensurePdfWorker } from '../utils/pdfWorkerInit';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -24,13 +26,7 @@ import {
 import { motion } from 'motion/react';
 
 // Configure pdfjs worker
-if (typeof window !== 'undefined') {
-  try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
-  } catch (e) {
-    console.warn('PDF Worker config notice:', e);
-  }
-}
+ensurePdfWorker();
 
 interface PdfReaderPageProps {
   storyId: string;
@@ -116,67 +112,94 @@ export const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ storyId, navigate 
     let isMounted = true;
     setIsLoadingPdf(true);
     setErrorMessage(null);
+    ensurePdfWorker();
 
     const loadPdf = async () => {
-      try {
-        // 1. Check local IndexedDB cache first
-        const localData = await getLocalPdfData(story.id);
-        let loadingTask: any;
+      let loadedDoc: any = null;
 
+      // 1. Check local IndexedDB / Memory Cache
+      try {
+        const localData = await getLocalPdfData(story.id);
         if (
           localData &&
           localData.data &&
           localData.data.byteLength > 0 &&
           !(localData.data as any).detached
         ) {
-          loadingTask = pdfjsLib.getDocument({
+          const loadingTask = pdfjsLib.getDocument({
             data: new Uint8Array(localData.data.slice(0)),
           });
-        } else if (story.pdfUrl) {
-          loadingTask = pdfjsLib.getDocument({
+          const docLoaded = await loadingTask.promise;
+          if (docLoaded && docLoaded.numPages > 0) {
+            loadedDoc = docLoaded;
+          }
+        }
+      } catch (localErr) {
+        console.warn('Local PDF cache read notice:', localErr);
+      }
+
+      // 2. If no local doc, try remote URL if valid http/https
+      if (!loadedDoc && story.pdfUrl && !story.pdfUrl.startsWith('blob:')) {
+        try {
+          const loadingTask = pdfjsLib.getDocument({
             url: story.pdfUrl,
             withCredentials: false,
           });
-        } else {
-          throw new Error('PDF unavailable for this story.');
+          const docLoaded = await loadingTask.promise;
+          if (docLoaded && docLoaded.numPages > 0) {
+            loadedDoc = docLoaded;
+          }
+        } catch (urlErr) {
+          console.warn('Remote story.pdfUrl load notice:', urlErr);
         }
+      }
 
-        const docLoaded = await loadingTask.promise;
-        if (!isMounted) return;
+      // 3. If story.pdfUrl is a blob URL from the current active session
+      if (!loadedDoc && story.pdfUrl && story.pdfUrl.startsWith('blob:')) {
+        try {
+          const loadingTask = pdfjsLib.getDocument({
+            url: story.pdfUrl,
+            withCredentials: false,
+          });
+          const docLoaded = await loadingTask.promise;
+          if (docLoaded && docLoaded.numPages > 0) {
+            loadedDoc = docLoaded;
+          }
+        } catch (blobErr) {
+          console.warn('Current session blob URL was expired or unreachable:', blobErr);
+        }
+      }
 
-        setPdfDoc(docLoaded);
-        setTotalPages(docLoaded.numPages);
+      // 4. Fallback: Synthesize the full multi-page PDF dynamically
+      if (!loadedDoc) {
+        try {
+          const generatedBytes = generateStoryPdfUint8Array(story);
+          const loadingTask = pdfjsLib.getDocument({
+            data: generatedBytes,
+          });
+          const docLoaded = await loadingTask.promise;
+          if (docLoaded && docLoaded.numPages > 0) {
+            loadedDoc = docLoaded;
+          }
+        } catch (genErr) {
+          console.error('Dynamic PDF synthesis notice in reader:', genErr);
+        }
+      }
+
+      if (!isMounted) return;
+
+      if (loadedDoc) {
+        setPdfDoc(loadedDoc);
+        setTotalPages(docLoadedNumPages(loadedDoc));
         setCurrentPage(1);
         setIsLoadingPdf(false);
-      } catch (err: any) {
-        if (!isMounted) return;
-
-        // If local data failed due to buffer detachment, attempt fallback to story.pdfUrl
-        if (story.pdfUrl) {
-          try {
-            const fallbackTask = pdfjsLib.getDocument({
-              url: story.pdfUrl,
-              withCredentials: false,
-            });
-            const fallbackDoc = await fallbackTask.promise;
-            if (!isMounted) return;
-            setPdfDoc(fallbackDoc);
-            setTotalPages(fallbackDoc.numPages);
-            setCurrentPage(1);
-            setIsLoadingPdf(false);
-            return;
-          } catch (fallbackErr) {
-            console.warn('Fallback PDF load also failed:', fallbackErr);
-          }
-        }
-
-        console.error('Failed to load PDF document:', err);
-        setErrorMessage(
-          err?.message || 'Unable to load the PDF file. The document may be missing or inaccessible.'
-        );
+      } else {
+        setErrorMessage('Unable to render PDF document for this story. Please try again later.');
         setIsLoadingPdf(false);
       }
     };
+
+    const docLoadedNumPages = (docItem: any) => docItem?.numPages || 1;
 
     loadPdf();
 

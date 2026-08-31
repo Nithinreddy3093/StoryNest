@@ -634,12 +634,24 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
                       className="bg-[#0b111e] border border-slate-800 hover:border-amber-500/40 rounded-2xl overflow-hidden p-3.5 sm:p-4 flex flex-col justify-between gap-3 sm:gap-4 shadow-lg transition-all"
                     >
                       <div className="flex gap-3 sm:gap-3.5 min-w-0">
-                        <img
-                          src={story.coverImage}
-                          alt={story.title}
-                          referrerPolicy="no-referrer"
-                          className="w-18 h-22 sm:w-20 sm:h-26 object-cover rounded-xl shrink-0 border border-slate-800 shadow-md"
-                        />
+                        <div className="relative w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden shrink-0 border border-slate-800 bg-slate-950 shadow-md">
+                          <img
+                            src={story.coverImage}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+                          />
+                          <img
+                            src={story.coverImage}
+                            alt={story.title}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src =
+                                'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                            }}
+                            className="relative z-[1] w-full h-full object-cover"
+                          />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5 mb-1">
                             <span
@@ -776,12 +788,24 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
                       className="bg-[#0b111e] border border-slate-800 hover:border-amber-500/40 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5 sm:gap-4 cursor-pointer transition-all shadow-md"
                     >
                       <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                        <img
-                          src={story.coverImage}
-                          alt={story.title}
-                          referrerPolicy="no-referrer"
-                          className="w-14 h-16 sm:w-16 sm:h-20 object-cover rounded-xl shrink-0 border border-slate-800 shadow-sm"
-                        />
+                        <div className="relative w-16 sm:w-18 aspect-[3/4] rounded-xl overflow-hidden shrink-0 border border-slate-800 bg-slate-950 shadow-sm">
+                          <img
+                            src={story.coverImage}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-30 pointer-events-none"
+                          />
+                          <img
+                            src={story.coverImage}
+                            alt={story.title}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src =
+                                'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop';
+                            }}
+                            className="relative z-[1] w-full h-full object-cover"
+                          />
+                        </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-serif-heading text-xs sm:text-sm font-bold text-slate-100 truncate">
                             {story.title}

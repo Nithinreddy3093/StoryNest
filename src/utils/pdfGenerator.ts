@@ -1,7 +1,10 @@
 import { jsPDF } from 'jspdf';
 import { Story } from '../types';
 
-export const generateStoryPdf = (story: Story) => {
+/**
+ * Builds a styled, multi-page StoryNest Reader edition PDF document from a Story entity.
+ */
+export const createStoryPdfDocument = (story: Story): jsPDF => {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -24,42 +27,69 @@ export const generateStoryPdf = (story: Story) => {
 
   // Logo / Header
   doc.setTextColor(245, 158, 11);
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setFont('times', 'bold');
   doc.text('STORYNEST  —  STORIES THAT STAY WITH YOU', pageWidth / 2, 120, { align: 'center' });
 
   // Story Title
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(28);
+  doc.setFontSize(26);
   doc.setFont('times', 'bold');
-  const splitTitle = doc.splitTextToSize(story.title, contentWidth);
+  const splitTitle = doc.splitTextToSize(story.title || 'Untitled Story', contentWidth - 20);
   doc.text(splitTitle, pageWidth / 2, 220, { align: 'center' });
 
   // Author
   doc.setTextColor(245, 158, 11);
   doc.setFontSize(15);
   doc.setFont('times', 'italic');
-  doc.text(`By ${story.author}`, pageWidth / 2, 280, { align: 'center' });
+  doc.text(`By ${story.author || 'StoryNest Author'}`, pageWidth / 2, 280, { align: 'center' });
 
   // Genre and Info Pill
   doc.setTextColor(203, 213, 225);
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Genre: ${story.genre} ${story.secondaryGenre ? `• ${story.secondaryGenre}` : ''}  |  Language: ${story.language}`, pageWidth / 2, 330, { align: 'center' });
-
-  // Description
-  doc.setTextColor(148, 163, 184);
   doc.setFontSize(11);
-  const splitDesc = doc.splitTextToSize(`"${story.description}"`, contentWidth - 40);
-  doc.text(splitDesc, pageWidth / 2, 390, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  const genreText = `Genre: ${story.genre || 'Fiction'}${story.secondaryGenre ? ` • ${story.secondaryGenre}` : ''}  |  Language: ${story.language || 'English'}`;
+  doc.text(genreText, pageWidth / 2, 330, { align: 'center' });
+
+  // Description / Blurb
+  if (story.description) {
+    doc.setTextColor(148, 163, 184);
+    doc.setFontSize(11);
+    doc.setFont('times', 'italic');
+    const splitDesc = doc.splitTextToSize(`"${story.description}"`, contentWidth - 40);
+    doc.text(splitDesc, pageWidth / 2, 380, { align: 'center' });
+  }
 
   // Footer on cover
   doc.setTextColor(100, 116, 139);
-  doc.setFontSize(10);
-  doc.text('Published on StoryNest • Free Reader Edition', pageWidth / 2, pageHeight - 70, { align: 'center' });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Published on StoryNest • Free Reader Edition', pageWidth / 2, pageHeight - 65, { align: 'center' });
 
-  // Chapter Pages
-  story.chapters.forEach((chapter, index) => {
+  // Prepare chapters / content to render
+  const chapters = Array.isArray(story.chapters) && story.chapters.length > 0
+    ? story.chapters
+    : story.extractedText
+      ? [{
+          id: 'chap-extracted',
+          chapterNumber: 1,
+          chapterTitle: 'Complete Story',
+          content: story.extractedText,
+          readTime: '5 min read',
+        }]
+      : [{
+          id: 'chap-default',
+          chapterNumber: 1,
+          chapterTitle: story.title || 'Story Overview',
+          content: story.description || 'Welcome to StoryNest. Enjoy reading this edition.',
+          readTime: '2 min read',
+        }];
+
+  let globalPageIndex = 1;
+
+  // Render each chapter
+  chapters.forEach((chapter) => {
+    globalPageIndex++;
     doc.addPage('a4', 'portrait');
 
     // Page Background - Warm reading tint
@@ -67,53 +97,91 @@ export const generateStoryPdf = (story: Story) => {
     doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
     // Chapter Header
-    doc.setTextColor(180, 83, 9); // Amber
-    doc.setFontSize(12);
+    doc.setTextColor(180, 83, 9); // Amber 700
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`CHAPTER ${chapter.chapterNumber}`, pageWidth / 2, 60, { align: 'center' });
+    doc.text(`CHAPTER ${chapter.chapterNumber || 1}`, pageWidth / 2, 60, { align: 'center' });
 
     doc.setTextColor(15, 23, 42); // Slate 900
-    doc.setFontSize(20);
+    doc.setFontSize(19);
     doc.setFont('times', 'bold');
-    doc.text(chapter.chapterTitle, pageWidth / 2, 88, { align: 'center' });
+    const chapterTitleText = chapter.chapterTitle || `Chapter ${chapter.chapterNumber || 1}`;
+    doc.text(chapterTitleText, pageWidth / 2, 88, { align: 'center' });
 
     // Decorative separator line
     doc.setDrawColor(217, 119, 6);
     doc.setLineWidth(1);
-    doc.line(pageWidth / 2 - 30, 102, pageWidth / 2 + 30, 102);
+    doc.line(pageWidth / 2 - 30, 100, pageWidth / 2 + 30, 100);
 
     // Chapter Body Text
     doc.setTextColor(51, 65, 85);
     doc.setFontSize(11.5);
     doc.setFont('times', 'normal');
 
-    const paragraphs = chapter.content.split('\n\n');
+    const contentStr = chapter.content || '';
+    const paragraphs = contentStr.split('\n\n');
     let yPos = 130;
 
     paragraphs.forEach((p) => {
-      if (!p.trim()) return;
-      const splitLines = doc.splitTextToSize(p.trim(), contentWidth);
-      
+      const cleanPara = p.trim();
+      if (!cleanPara) return;
+      const splitLines = doc.splitTextToSize(cleanPara, contentWidth);
+
       // If we exceed page height, add another page
       if (yPos + splitLines.length * 16 > pageHeight - 70) {
+        globalPageIndex++;
         doc.addPage('a4', 'portrait');
         doc.setFillColor(252, 250, 246);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        yPos = 60;
+
+        // Running header
+        doc.setTextColor(148, 163, 184);
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${story.title} • ${chapterTitleText}`, pageWidth / 2, 40, { align: 'center' });
+
+        yPos = 70;
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(11.5);
+        doc.setFont('times', 'normal');
       }
 
       doc.text(splitLines, margin, yPos, { lineHeightFactor: 1.5 });
-      yPos += splitLines.length * 16 + 14;
+      yPos += splitLines.length * 16 + 12;
     });
 
     // Page number footer
     doc.setTextColor(148, 163, 184);
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${story.title} • Page ${index + 2}`, pageWidth / 2, pageHeight - 30, { align: 'center' });
+    doc.text(`${story.title || 'StoryNest'} • Page ${globalPageIndex}`, pageWidth / 2, pageHeight - 30, { align: 'center' });
   });
 
-  // Download the generated PDF
-  const sanitizedTitle = story.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return doc;
+};
+
+/**
+ * Returns a binary ArrayBuffer of the generated PDF.
+ */
+export const generateStoryPdfArrayBuffer = (story: Story): ArrayBuffer => {
+  const doc = createStoryPdfDocument(story);
+  return doc.output('arraybuffer');
+};
+
+/**
+ * Returns a Uint8Array of the generated PDF suitable for PDF.js getDocument({ data }).
+ */
+export const generateStoryPdfUint8Array = (story: Story): Uint8Array => {
+  const buffer = generateStoryPdfArrayBuffer(story);
+  return new Uint8Array(buffer);
+};
+
+/**
+ * Triggers a browser download of the story PDF.
+ */
+export const generateStoryPdf = (story: Story): void => {
+  const doc = createStoryPdfDocument(story);
+  const sanitizedTitle = (story.title || 'story').replace(/[^a-zA-Z0-9_-]/g, '_');
   doc.save(`${sanitizedTitle}_StoryNest.pdf`);
 };
+

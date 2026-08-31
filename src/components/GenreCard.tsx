@@ -68,6 +68,10 @@ export const GenreCard: React.FC<GenreCardProps> = ({ genre, onSelectGenre }) =>
         src={genre.coverImage}
         alt={genre.name}
         referrerPolicy="no-referrer"
+        onError={(e) => {
+          (e.target as HTMLImageElement).src =
+            'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=1000&auto=format&fit=crop';
+        }}
         className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-700 brightness-[0.45] group-hover:brightness-[0.55]"
         loading="lazy"
       />
