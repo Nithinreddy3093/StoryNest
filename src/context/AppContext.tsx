@@ -19,6 +19,10 @@ import {
   signInWithPopup,
   fbSignOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   OperationType,
   handleFirestoreError,
   FirebaseUser,
@@ -51,9 +55,10 @@ interface AppContextType {
   setShowAuthModal: (show: boolean) => void;
   authModalMode: 'login' | 'signup' | 'forgot';
   setAuthModalMode: (mode: 'login' | 'signup' | 'forgot') => void;
-  login: (email: string, role?: 'admin' | 'author' | 'reader') => Promise<boolean>;
+  login: (email: string, password?: string, role?: 'admin' | 'author' | 'reader') => Promise<boolean>;
   signInWithGoogle: () => Promise<boolean>;
-  signup: (name: string, email: string, role?: 'author' | 'reader', username?: string) => Promise<boolean>;
+  signup: (name: string, email: string, password?: string, role?: 'author' | 'reader', username?: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<User>) => Promise<boolean>;
   deleteAccount: () => Promise<void>;
@@ -468,79 +473,230 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const login = async (email: string, _role: 'admin' | 'author' | 'reader' = 'reader'): Promise<boolean> => {
+  const login = async (
+    email: string,
+    password?: string,
+    _role: 'admin' | 'author' | 'reader' = 'reader'
+  ): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', cleanEmail));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const userData = snap.docs[0].data() as User;
-        setCurrentUser(userData);
-        setShowAuthModal(false);
-        addToast(`Welcome back, ${userData.name}!`, 'success');
-        return true;
-      }
-    } catch (e) {
-      console.warn('Login lookup note:', e);
+    if (!cleanEmail) {
+      addToast('Please enter your email address.', 'warning');
+      return false;
+    }
+    if (!password) {
+      addToast('Please enter your password.', 'warning');
+      return false;
     }
 
-    addToast('No registered user found with that email. Please sign in with Google or create an account.', 'warning');
-    return false;
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const fbUser = userCredential.user;
+      const isAdmin = fbUser.email?.toLowerCase() === 'mudiyamnamitha7@gmail.com';
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const snap = await getDoc(userDocRef);
+
+      if (snap.exists()) {
+        const data = snap.data() as User;
+        const finalUser: User = {
+          ...data,
+          id: fbUser.uid,
+          role: isAdmin ? 'admin' : (data.role || 'reader'),
+        };
+        setCurrentUser(finalUser);
+        addToast(`Welcome back, ${finalUser.name || finalUser.displayName || 'Reader'}!`, 'success');
+      } else {
+        const generatedUser = generateUsername(fbUser.email || fbUser.displayName || 'user');
+        const newUser: User = {
+          id: fbUser.uid,
+          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
+          displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
+          username: generatedUser,
+          penName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Author',
+          email: fbUser.email || cleanEmail,
+          avatar: fbUser.photoURL || 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
+          role: isAdmin ? 'admin' : 'reader',
+          bio: '',
+          joinedDate: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+          accountPrivacy: 'public',
+          isPrivate: false,
+          followers: [],
+          following: [],
+          followRequests: [],
+          bookmarks: [],
+          bookmarkedStoryIds: [],
+          likedStoryIds: [],
+          readingHistory: [],
+          readingTheme: 'dark',
+          fontSize: 16,
+          autoScroll: false,
+          createdAt: new Date().toISOString(),
+        };
+        try {
+          await setDoc(userDocRef, newUser);
+          setCurrentUser(newUser);
+        } catch (setErr) {
+          console.warn('User profile creation note:', setErr);
+          setCurrentUser(newUser);
+        }
+        addToast(`Welcome back to StoryNest, ${newUser.name}!`, 'success');
+      }
+
+      setShowAuthModal(false);
+      return true;
+    } catch (error: any) {
+      console.error('Email sign-in error:', error);
+      const errorCode = error?.code || '';
+      if (
+        errorCode === 'auth/user-not-found' ||
+        errorCode === 'auth/wrong-password' ||
+        errorCode === 'auth/invalid-credential'
+      ) {
+        addToast('Invalid email or password. Please verify your credentials or create an account.', 'error');
+      } else if (errorCode === 'auth/invalid-email') {
+        addToast('Please enter a valid email address.', 'error');
+      } else if (errorCode === 'auth/user-disabled') {
+        addToast('This account has been disabled. Please contact support.', 'error');
+      } else if (errorCode === 'auth/too-many-requests') {
+        addToast('Too many failed attempts. Please wait a moment or reset your password.', 'error');
+      } else if (errorCode === 'auth/operation-not-allowed') {
+        addToast('Email & Password sign-in is not enabled in Firebase. Please use Google Sign-in or enable Email/Password provider in Firebase Console.', 'warning');
+      } else {
+        addToast(error.message || 'Failed to sign in. Please try again.', 'error');
+      }
+      return false;
+    }
   };
 
   const signup = async (
     name: string,
     email: string,
+    password?: string,
     role: 'author' | 'reader' = 'reader',
     customUsername?: string
   ): Promise<boolean> => {
-    const cleanUsername = customUsername
-      ? customUsername.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_')
-      : generateUsername(name || email);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
 
-    const available = await isUsernameAvailable(cleanUsername);
-    if (!available) {
-      addToast(`Username @${cleanUsername} is already taken.`, 'error');
+    if (!cleanEmail) {
+      addToast('Please enter your email address.', 'warning');
+      return false;
+    }
+    if (!password || password.length < 6) {
+      addToast('Password must be at least 6 characters long.', 'warning');
       return false;
     }
 
-    const userId = 'user-' + Date.now();
-    const newUser: User = {
-      id: userId,
-      name: name.trim() || email.split('@')[0],
-      displayName: name.trim() || email.split('@')[0],
-      username: cleanUsername,
-      penName: name.trim(),
-      email: email.trim().toLowerCase(),
-      avatar: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
-      role,
-      bio: '',
-      joinedDate: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-      accountPrivacy: 'public',
-      isPrivate: false,
-      followers: [],
-      following: [],
-      followRequests: [],
-      bookmarks: [],
-      bookmarkedStoryIds: [],
-      likedStoryIds: [],
-      readingHistory: [],
-      readingTheme: 'dark',
-      fontSize: 16,
-      autoScroll: false,
-      createdAt: new Date().toISOString(),
-    };
+    const cleanUsername = customUsername
+      ? customUsername.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_')
+      : generateUsername(cleanName || cleanEmail);
+
+    const available = await isUsernameAvailable(cleanUsername);
+    if (!available) {
+      addToast(`Username @${cleanUsername} is already taken. Please choose another name or username.`, 'error');
+      return false;
+    }
 
     try {
-      await setDoc(doc(db, 'users', userId), newUser);
+      const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const fbUser = userCredential.user;
+
+      if (cleanName) {
+        try {
+          await updateProfile(fbUser, { displayName: cleanName });
+        } catch (pErr) {
+          console.warn('Update profile note:', pErr);
+        }
+      }
+
+      const isAdmin = cleanEmail === 'mudiyamnamitha7@gmail.com';
+      const newUser: User = {
+        id: fbUser.uid,
+        name: cleanName || cleanEmail.split('@')[0],
+        displayName: cleanName || cleanEmail.split('@')[0],
+        username: cleanUsername,
+        penName: cleanName || 'Author',
+        email: cleanEmail,
+        avatar: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
+        role: isAdmin ? 'admin' : role,
+        bio: '',
+        joinedDate: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        accountPrivacy: 'public',
+        isPrivate: false,
+        followers: [],
+        following: [],
+        followRequests: [],
+        bookmarks: [],
+        bookmarkedStoryIds: [],
+        likedStoryIds: [],
+        readingHistory: [],
+        readingTheme: 'dark',
+        fontSize: 16,
+        autoScroll: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      await setDoc(userDocRef, newUser);
+
+      if (isAdmin) {
+        try {
+          const adminDocRef = doc(db, 'admins', fbUser.uid);
+          await setDoc(
+            adminDocRef,
+            { email: cleanEmail, role: 'admin', createdAt: new Date().toISOString() },
+            { merge: true }
+          );
+        } catch {
+          // admin doc
+        }
+      }
+
       setCurrentUser(newUser);
       setShowAuthModal(false);
       addToast(`Account created! Welcome to StoryNest, @${newUser.username}.`, 'success');
       return true;
-    } catch (e) {
-      console.warn('Signup error:', e);
-      addToast('Could not register account at this time.', 'error');
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      const errorCode = error?.code || '';
+      if (errorCode === 'auth/email-already-in-use') {
+        addToast('An account with this email already exists. Please sign in instead.', 'warning');
+      } else if (errorCode === 'auth/invalid-email') {
+        addToast('Please enter a valid email address.', 'error');
+      } else if (errorCode === 'auth/weak-password') {
+        addToast('Password is too weak. Please use at least 6 characters.', 'warning');
+      } else if (errorCode === 'auth/operation-not-allowed') {
+        addToast('Email & Password registration is not enabled in Firebase Console. Please use Google Sign-in or enable Email/Password provider.', 'warning');
+      } else {
+        addToast(error.message || 'Could not create account. Please try again.', 'error');
+      }
+      return false;
+    }
+  };
+
+  const resetPassword = async (email: string): Promise<boolean> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      addToast('Please enter your email address to reset password.', 'warning');
+      return false;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      addToast(`Password reset link sent to ${cleanEmail}. Check your inbox!`, 'success');
+      return true;
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      const errorCode = error?.code || '';
+      if (errorCode === 'auth/user-not-found') {
+        addToast(`If an account exists for ${cleanEmail}, a reset email has been sent.`, 'info');
+        return true;
+      } else if (errorCode === 'auth/invalid-email') {
+        addToast('Please provide a valid email address.', 'error');
+      } else if (errorCode === 'auth/operation-not-allowed') {
+        addToast('Email password reset is not enabled in Firebase.', 'error');
+      } else {
+        addToast(error.message || 'Could not send password reset email.', 'error');
+      }
       return false;
     }
   };
@@ -1625,6 +1781,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         login,
         signInWithGoogle,
         signup,
+        resetPassword,
         logout,
         updateUserProfile,
         deleteAccount,
