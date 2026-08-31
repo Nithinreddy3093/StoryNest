@@ -63,6 +63,12 @@ interface AppContextType {
   getFollowStatus: (targetUserId: string) => 'following' | 'pending' | 'none';
   isFollowingUser: (targetUserId: string) => boolean;
   hasPendingFollowRequest: (targetUserId: string) => boolean;
+  getFollowers: (userId: string) => FollowRelation[];
+  getFollowerUserIds: (userId: string) => string[];
+  getFollowing: (userId: string) => FollowRelation[];
+  getFollowingUserIds: (userId: string) => string[];
+  getFollowRequests: (userId: string) => FollowRelation[];
+  getFollowRequestUserIds: (userId: string) => string[];
   acceptFollowRequest: (requesterId: string) => Promise<void>;
   rejectFollowRequest: (requesterId: string) => Promise<void>;
   canViewUserStories: (authorId: string, authorAccountPrivacy?: string, isAuthorPrivate?: boolean) => boolean;
@@ -628,23 +634,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Your StoryNest account has been permanently deleted.', 'info');
   };
 
-  // Social & Follow System
-  const getFollowStatus = (targetUserId: string): 'following' | 'pending' | 'none' => {
-    if (!currentUser) return 'none';
+  // Social & Follow System (Single Source of Truth: Firestore 'follows' collection)
+  const getFollowers = (userId: string): FollowRelation[] => {
+    if (!userId) return [];
+    return follows.filter((f) => f.followingId === userId && f.status === 'following');
+  };
 
-    // 1. Check direct follow relationship in follows collection
-    const directRelation = follows.find(
-      (f) => f.followerId === currentUser.id && f.followingId === targetUserId
+  const getFollowerUserIds = (userId: string): string[] => {
+    return getFollowers(userId).map((f) => f.followerId);
+  };
+
+  const getFollowing = (userId: string): FollowRelation[] => {
+    if (!userId) return [];
+    return follows.filter((f) => f.followerId === userId && f.status === 'following');
+  };
+
+  const getFollowingUserIds = (userId: string): string[] => {
+    return getFollowing(userId).map((f) => f.followingId);
+  };
+
+  const getFollowRequests = (userId: string): FollowRelation[] => {
+    if (!userId) return [];
+    return follows.filter((f) => f.followingId === userId && f.status === 'pending');
+  };
+
+  const getFollowRequestUserIds = (userId: string): string[] => {
+    return getFollowRequests(userId).map((f) => f.followerId);
+  };
+
+  const getFollowStatus = (targetUserIdOrHandle: string): 'following' | 'pending' | 'none' => {
+    if (!currentUser || !targetUserIdOrHandle) return 'none';
+    if (currentUser.id === targetUserIdOrHandle) return 'none';
+
+    // 1. Direct match on followerId == currentUser.id and followingId == targetUserId
+    const match = follows.find(
+      (f) =>
+        f.followerId === currentUser.id &&
+        (f.followingId === targetUserIdOrHandle ||
+          (f.followingUsername && f.followingUsername.toLowerCase() === targetUserIdOrHandle.toLowerCase()))
     );
-    if (directRelation) {
-      if (directRelation.status === 'following') return 'following';
-      if (directRelation.status === 'pending') return 'pending';
-      if (directRelation.status === 'rejected') return 'none';
-    }
 
-    // 2. Check currentUser.following array
-    if (currentUser.following && currentUser.following.includes(targetUserId)) {
-      return 'following';
+    if (match) {
+      if (match.status === 'following') return 'following';
+      if (match.status === 'pending') return 'pending';
     }
 
     return 'none';
@@ -683,7 +715,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
-  const toggleFollowUser = async (targetUserId: string): Promise<boolean> => {
+  const toggleFollowUser = async (targetUserIdOrHandle: string): Promise<boolean> => {
     if (!currentUser) {
       setShowAuthModal(true);
       setAuthModalMode('login');
@@ -691,82 +723,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    if (currentUser.id === targetUserId) {
+    // Resolve target user by ID, username, or penName to guarantee we use the true Firestore Auth UID
+    const targetUser = await getUserByIdOrPenName(targetUserIdOrHandle);
+    if (!targetUser || !targetUser.id) {
+      addToast('Author not found.', 'error');
+      return false;
+    }
+
+    const actualTargetUid = targetUser.id;
+    const actualCurrentUid = currentUser.id;
+
+    if (actualCurrentUid === actualTargetUid) {
       addToast('You cannot follow your own profile.', 'info');
       return false;
     }
 
-    const currentStatus = getFollowStatus(targetUserId);
-    const currentFollowing = currentUser.following || [];
-    const targetUser = await getUserByIdOrPenName(targetUserId);
+    const currentStatus = getFollowStatus(actualTargetUid);
+    const followDocId = `${actualCurrentUid}_${actualTargetUid}`;
     const isTargetPrivate =
-      targetUser?.accountPrivacy === 'private' || targetUser?.isPrivate === true;
-
-    const targetRequests = targetUser?.followRequests || [];
-    const followDocId = `${currentUser.id}_${targetUserId}`;
+      targetUser.accountPrivacy === 'private' || targetUser.isPrivate === true;
 
     // CASE 1: Currently Following -> Unfollow
     if (currentStatus === 'following') {
-      const updatedFollowing = currentFollowing.filter((id) => id !== targetUserId);
-      const updatedUser: User = { ...currentUser, following: updatedFollowing };
-      setCurrentUser(updatedUser);
-
       setFollows((prev) => prev.filter((f) => f.id !== followDocId));
 
       try {
-        if (auth.currentUser) {
-          await updateDoc(doc(db, 'users', auth.currentUser.uid), { following: updatedFollowing });
-        }
         await deleteDoc(doc(db, 'follows', followDocId));
       } catch (e) {
         console.warn('Firestore unfollow error:', e);
       }
 
-      if (targetUser) {
-        const updatedTargetFollowers = (targetUser.followers || []).filter(
-          (id) => id !== currentUser.id
-        );
-        try {
-          await updateDoc(doc(db, 'users', targetUserId), { followers: updatedTargetFollowers });
-        } catch {
-          // offline
-        }
-      }
-
-      addToast(`Unfollowed @${targetUser?.username || targetUser?.name || 'author'}.`, 'info');
+      addToast(`Unfollowed @${targetUser.username || targetUser.name || 'author'}.`, 'info');
       return false;
     }
 
     // CASE 2: Currently Pending Request -> Cancel Request
     if (currentStatus === 'pending') {
-      const updatedTargetRequests = targetRequests.filter((id) => id !== currentUser.id);
       setFollows((prev) => prev.filter((f) => f.id !== followDocId));
 
-      if (targetUser) {
-        try {
-          await updateDoc(doc(db, 'users', targetUserId), { followRequests: updatedTargetRequests });
-          await deleteDoc(doc(db, 'follows', followDocId));
-        } catch {
-          // offline
-        }
+      try {
+        await deleteDoc(doc(db, 'follows', followDocId));
+      } catch (e) {
+        console.warn('Firestore cancel request error:', e);
       }
+
       addToast('Follow request cancelled.', 'info');
       return false;
     }
 
     // CASE 3: Not Following, Target is PRIVATE -> Send Follow Request
     if (isTargetPrivate) {
-      const updatedTargetRequests = [...targetRequests, currentUser.id];
       const newFollowDoc: FollowRelation = {
         id: followDocId,
-        followerId: currentUser.id,
-        followerName: currentUser.name,
-        followerUsername: currentUser.username,
-        followerAvatar: currentUser.avatar,
-        followingId: targetUserId,
-        followingName: targetUser?.name || 'Author',
-        followingUsername: targetUser?.username,
-        followingAvatar: targetUser?.avatar,
+        followerId: actualCurrentUid,
+        followerName: currentUser.name || currentUser.displayName || 'Reader',
+        followerUsername: currentUser.username || '',
+        followerAvatar: currentUser.avatar || '',
+        followingId: actualTargetUid,
+        followingName: targetUser.name || targetUser.displayName || 'Author',
+        followingUsername: targetUser.username || '',
+        followingAvatar: targetUser.avatar || '',
         status: 'pending',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -775,47 +791,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setFollows((prev) => [...prev.filter((f) => f.id !== followDocId), newFollowDoc]);
 
       const newNotif: AppNotification = {
-        id: 'notif-' + Date.now(),
-        recipientId: targetUserId,
+        id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        recipientId: actualTargetUid,
         type: 'follow_request',
-        actorId: currentUser.id,
-        actorName: currentUser.name,
-        actorUsername: currentUser.username,
-        actorAvatar: currentUser.avatar,
+        actorId: actualCurrentUid,
+        actorName: currentUser.name || 'Reader',
+        actorUsername: currentUser.username || '',
+        actorAvatar: currentUser.avatar || '',
         read: false,
         createdAt: new Date().toISOString(),
       };
 
       try {
         await setDoc(doc(db, 'follows', followDocId), newFollowDoc);
-        await updateDoc(doc(db, 'users', targetUserId), { followRequests: updatedTargetRequests });
         await setDoc(doc(db, 'notifications', newNotif.id), newNotif);
-      } catch {
-        // offline
+      } catch (err) {
+        console.warn('Follow request write note:', err);
       }
 
       addToast(
-        `Follow request sent to @${targetUser?.username || targetUser?.name || 'author'}.`,
+        `Follow request sent to @${targetUser.username || targetUser.name || 'author'}.`,
         'success'
       );
       return false;
     }
 
     // CASE 4: Not Following, Target is PUBLIC -> Follow Immediately
-    const updatedFollowing = [...currentFollowing, targetUserId];
-    const updatedUser: User = { ...currentUser, following: updatedFollowing };
-    setCurrentUser(updatedUser);
-
     const newFollowDoc: FollowRelation = {
       id: followDocId,
-      followerId: currentUser.id,
-      followerName: currentUser.name,
-      followerUsername: currentUser.username,
-      followerAvatar: currentUser.avatar,
-      followingId: targetUserId,
-      followingName: targetUser?.name || 'Author',
-      followingUsername: targetUser?.username,
-      followingAvatar: targetUser?.avatar,
+      followerId: actualCurrentUid,
+      followerName: currentUser.name || currentUser.displayName || 'Reader',
+      followerUsername: currentUser.username || '',
+      followerAvatar: currentUser.avatar || '',
+      followingId: actualTargetUid,
+      followingName: targetUser.name || targetUser.displayName || 'Author',
+      followingUsername: targetUser.username || '',
+      followingAvatar: targetUser.avatar || '',
       status: 'following',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -824,33 +835,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFollows((prev) => [...prev.filter((f) => f.id !== followDocId), newFollowDoc]);
 
     const newNotif: AppNotification = {
-      id: 'notif-' + Date.now(),
-      recipientId: targetUserId,
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      recipientId: actualTargetUid,
       type: 'new_follower',
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorUsername: currentUser.username,
-      actorAvatar: currentUser.avatar,
+      actorId: actualCurrentUid,
+      actorName: currentUser.name || 'Reader',
+      actorUsername: currentUser.username || '',
+      actorAvatar: currentUser.avatar || '',
       read: false,
       createdAt: new Date().toISOString(),
     };
 
-    const targetFollowers = targetUser?.followers || [];
-    const updatedTargetFollowers = [...targetFollowers, currentUser.id];
-
     try {
-      if (auth.currentUser) {
-        await updateDoc(doc(db, 'users', auth.currentUser.uid), { following: updatedFollowing });
-      }
       await setDoc(doc(db, 'follows', followDocId), newFollowDoc);
-      await updateDoc(doc(db, 'users', targetUserId), { followers: updatedTargetFollowers });
       await setDoc(doc(db, 'notifications', newNotif.id), newNotif);
-    } catch {
-      // offline
+    } catch (err) {
+      console.warn('Follow document write note:', err);
     }
 
     addToast(
-      `Now following @${targetUser?.username || targetUser?.name || 'author'}!`,
+      `Now following @${targetUser.username || targetUser.name || 'author'}!`,
       'success'
     );
     return true;
@@ -858,26 +862,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const acceptFollowRequest = async (requesterId: string) => {
     if (!currentUser) return;
-
-    const currentRequests = currentUser.followRequests || [];
-    const updatedRequests = currentRequests.filter((id) => id !== requesterId);
-    const currentFollowers = currentUser.followers || [];
-    const updatedFollowers = currentFollowers.includes(requesterId)
-      ? currentFollowers
-      : [...currentFollowers, requesterId];
-
-    const updatedUser: User = {
-      ...currentUser,
-      followRequests: updatedRequests,
-      followers: updatedFollowers,
-    };
-    setCurrentUser(updatedUser);
-
-    const requester = await getUserByIdOrPenName(requesterId);
-    const requesterFollowing = requester?.following || [];
-    const updatedRequesterFollowing = requesterFollowing.includes(currentUser.id)
-      ? requesterFollowing
-      : [...requesterFollowing, currentUser.id];
 
     const followDocId = `${requesterId}_${currentUser.id}`;
 
@@ -889,46 +873,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
+    const requester = await getUserByIdOrPenName(requesterId);
+
     const newNotif: AppNotification = {
-      id: 'notif-' + Date.now(),
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       recipientId: requesterId,
       type: 'follow_accepted',
       actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorUsername: currentUser.username,
-      actorAvatar: currentUser.avatar,
+      actorName: currentUser.name || 'Author',
+      actorUsername: currentUser.username || '',
+      actorAvatar: currentUser.avatar || '',
       read: false,
       createdAt: new Date().toISOString(),
     };
 
     try {
-      if (auth.currentUser) {
-        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-          followRequests: updatedRequests,
-          followers: updatedFollowers,
-        });
-      }
-      await updateDoc(doc(db, 'users', requesterId), { following: updatedRequesterFollowing });
-      await setDoc(
-        doc(db, 'follows', followDocId),
-        {
-          id: followDocId,
-          followerId: requesterId,
-          followerName: requester?.name || 'Reader',
-          followerUsername: requester?.username,
-          followerAvatar: requester?.avatar,
-          followingId: currentUser.id,
-          followingName: currentUser.name,
-          followingUsername: currentUser.username,
-          followingAvatar: currentUser.avatar,
-          status: 'following',
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
+      await updateDoc(doc(db, 'follows', followDocId), {
+        status: 'following',
+        updatedAt: new Date().toISOString(),
+      });
       await setDoc(doc(db, 'notifications', newNotif.id), newNotif);
-    } catch {
-      // offline
+    } catch (err) {
+      console.warn('Accept follow error:', err);
     }
 
     addToast(
@@ -940,28 +906,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const rejectFollowRequest = async (requesterId: string) => {
     if (!currentUser) return;
 
-    const currentRequests = currentUser.followRequests || [];
-    const updatedRequests = currentRequests.filter((id) => id !== requesterId);
-
-    const updatedUser: User = {
-      ...currentUser,
-      followRequests: updatedRequests,
-    };
-    setCurrentUser(updatedUser);
-
     const followDocId = `${requesterId}_${currentUser.id}`;
 
     setFollows((prev) => prev.filter((f) => f.id !== followDocId));
 
     try {
-      if (auth.currentUser) {
-        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-          followRequests: updatedRequests,
-        });
-      }
       await deleteDoc(doc(db, 'follows', followDocId));
-    } catch {
-      // offline
+    } catch (err) {
+      console.warn('Reject follow error:', err);
     }
 
     addToast('Follow request removed.', 'info');
@@ -1483,6 +1435,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getFollowStatus,
         isFollowingUser,
         hasPendingFollowRequest,
+        getFollowers,
+        getFollowerUserIds,
+        getFollowing,
+        getFollowingUserIds,
+        getFollowRequests,
+        getFollowRequestUserIds,
         acceptFollowRequest,
         rejectFollowRequest,
         canViewUserStories,

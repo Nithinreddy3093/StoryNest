@@ -30,6 +30,7 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
 }) => {
   const {
     currentUser,
+    follows,
     getUserByIdOrPenName,
     toggleFollowUser,
     getFollowStatus,
@@ -54,6 +55,30 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
         const u = await getUserByIdOrPenName(uid);
         if (u && isMounted) {
           userMap[uid] = u;
+        } else if (isMounted) {
+          // Fallback to embedded metadata inside follows collection
+          const followRelation = follows.find(
+            (f) => f.followerId === uid || f.followingId === uid
+          );
+          if (followRelation) {
+            const isFollower = followRelation.followerId === uid;
+            userMap[uid] = {
+              id: uid,
+              name: (isFollower ? followRelation.followerName : followRelation.followingName) || 'StoryNest User',
+              username: (isFollower ? followRelation.followerUsername : followRelation.followingUsername) || '',
+              avatar:
+                (isFollower ? followRelation.followerAvatar : followRelation.followingAvatar) ||
+                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+              role: 'reader',
+              accountPrivacy: 'public',
+              email: '',
+              joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+              bookmarks: [],
+              bookmarkedStoryIds: [],
+              likedStoryIds: [],
+              readingHistory: [],
+            };
+          }
         }
       }
       if (isMounted) {
@@ -66,7 +91,7 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, userIds, getUserByIdOrPenName]);
+  }, [isOpen, userIds, getUserByIdOrPenName, follows]);
 
   if (!isOpen) return null;
 

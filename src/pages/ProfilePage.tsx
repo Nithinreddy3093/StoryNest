@@ -47,6 +47,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
     deleteAccount,
     toggleFollowUser,
     getFollowStatus,
+    getFollowerUserIds,
+    getFollowingUserIds,
+    getFollowRequestUserIds,
     acceptFollowRequest,
     rejectFollowRequest,
     canViewUserStories,
@@ -258,9 +261,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
   );
 
   const followStatus = getFollowStatus(profileUser.id);
-  const followersList = profileUser.followers || [];
-  const followingList = profileUser.following || [];
-  const followRequestsList = profileUser.followRequests || [];
+  const followersList = getFollowerUserIds(profileUser.id);
+  const followingList = getFollowingUserIds(profileUser.id);
+  const followRequestsList = getFollowRequestUserIds(profileUser.id);
 
   const openFollowersList = () => {
     setFollowModalTitle(`Followers of ${profileUser.name}`);
@@ -1164,12 +1167,41 @@ const FollowRequestRow: React.FC<{
   onReject: () => void;
   navigate: (route: string) => void;
 }> = ({ userId, onAccept, onReject, navigate }) => {
-  const { getUserByIdOrPenName } = useApp();
+  const { getUserByIdOrPenName, follows } = useApp();
   const [reqUser, setReqUser] = useState<User | null>(null);
 
   useEffect(() => {
-    getUserByIdOrPenName(userId).then(setReqUser);
-  }, [userId, getUserByIdOrPenName]);
+    let isMounted = true;
+    getUserByIdOrPenName(userId).then((user) => {
+      if (!isMounted) return;
+      if (user) {
+        setReqUser(user);
+      } else {
+        const rel = follows.find((f) => f.followerId === userId);
+        if (rel) {
+          setReqUser({
+            id: userId,
+            name: rel.followerName || 'Community Member',
+            username: rel.followerUsername || '',
+            avatar:
+              rel.followerAvatar ||
+              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+            role: 'reader',
+            accountPrivacy: 'public',
+            email: '',
+            joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+            bookmarks: [],
+            bookmarkedStoryIds: [],
+            likedStoryIds: [],
+            readingHistory: [],
+          });
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [userId, getUserByIdOrPenName, follows]);
 
   if (!reqUser) return null;
 
