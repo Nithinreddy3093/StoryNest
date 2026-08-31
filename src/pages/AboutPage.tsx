@@ -2,12 +2,15 @@ import React from 'react';
 import { Sparkles, Heart, Shield, Users, Globe, BookOpen, Feather, ArrowRight, Instagram, Mail, Phone, MapPin, Quote } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
+import { NITHIN_REDDY_AVATAR_URL, ABOUT_HERO_WALLPAPER_IMAGE } from '../data/authorAssets';
 
 interface AboutPageProps {
   navigate: (route: string) => void;
 }
 
 export const AboutPage: React.FC<AboutPageProps> = ({ navigate }) => {
+  const { currentUser } = useApp();
+  const authorAvatar = NITHIN_REDDY_AVATAR_URL;
   const pillars = [
     {
       title: 'Born from Real Life',
@@ -38,7 +41,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ navigate }) => {
         <div
           className="absolute inset-0 bg-cover bg-center filter grayscale contrast-125"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=2000&auto=format&fit=crop')`,
+            backgroundImage: `url('${ABOUT_HERO_WALLPAPER_IMAGE}')`,
           }}
         >
           {/* Shattered Particle & Crack Atmospheric Overlay */}
@@ -73,21 +76,18 @@ export const AboutPage: React.FC<AboutPageProps> = ({ navigate }) => {
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               {/* Author Photo & Profile Card */}
               <div className="lg:col-span-4 flex flex-col items-center text-center">
-                <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full p-1.5 bg-gradient-to-tr from-amber-500 via-amber-300 to-rose-400 shadow-2xl mb-4 group cursor-pointer"
-                     onClick={() => navigate('profile')}
-                     title="View or edit author profile"
-                >
+                <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full p-1.5 bg-gradient-to-tr from-amber-500 via-amber-300 to-rose-400 shadow-2xl mb-4">
                   <img
-                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=600"
-                    alt="Author Nithin Reddy (Signature Katana & Suit)"
+                    src={authorAvatar}
+                    alt="Author Nithin Reddy"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300 shadow-inner"
+                    className="w-full h-full object-cover rounded-full shadow-inner bg-slate-900"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop';
+                        'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=600&auto=format&fit=crop';
                     }}
                   />
-                  <div className="absolute bottom-1 right-2 p-2 bg-amber-500 rounded-full text-slate-950 shadow-md">
+                  <div className="absolute bottom-1 right-2 p-2 bg-amber-500 rounded-full text-slate-950 shadow-md z-10 pointer-events-none">
                     <Feather className="w-4 h-4" />
                   </div>
                 </div>

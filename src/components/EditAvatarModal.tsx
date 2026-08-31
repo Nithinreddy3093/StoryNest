@@ -154,7 +154,7 @@ export const EditAvatarModal: React.FC<EditAvatarModalProps> = ({
                   onError={(e) => {
                     // Fallback to placeholder if image link fails
                     (e.target as HTMLImageElement).src =
-                      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300';
+                      'https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=300';
                   }}
                 />
               </div>

@@ -1263,7 +1263,7 @@ const FollowRequestRow: React.FC<{
             username: rel.followerUsername || '',
             avatar:
               rel.followerAvatar ||
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+              'https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=200',
             role: 'reader',
             accountPrivacy: 'public',
             email: '',
