@@ -11,6 +11,7 @@ import {
   BookOpen,
   Clock,
   Sparkles,
+  MessageCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -41,6 +42,13 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({
     if (item.type === 'follow_request' || item.type === 'new_follower' || item.type === 'follow_accepted') {
       onClose();
       navigate(`profile:${item.actorUsername || item.actorId}`);
+    } else if (item.type === 'story_reflection' && item.storyId) {
+      onClose();
+      navigate(`read:${item.storyId}`);
+      setTimeout(() => {
+        const el = document.getElementById('comments-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 350);
     } else if (item.storyId) {
       onClose();
       navigate(`read:${item.storyId}`);
@@ -53,7 +61,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({
         initial={{ opacity: 0, scale: 0.95, y: 5 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 5 }}
-        className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-[#0d1424] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden z-50 text-slate-200"
+        className="absolute right-[-10px] sm:right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-[#0d1424] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden z-50 text-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -109,6 +117,8 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({
                       <UserCheck className="w-2.5 h-2.5 text-emerald-400" />
                     ) : item.type === 'new_follower' ? (
                       <UserPlus className="w-2.5 h-2.5 text-sky-400" />
+                    ) : item.type === 'story_reflection' ? (
+                      <MessageCircle className="w-2.5 h-2.5 text-amber-400" />
                     ) : (
                       <Heart className="w-2.5 h-2.5 text-rose-400" />
                     )}
@@ -127,6 +137,11 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({
                     {item.type === 'new_follower' && 'started following your stories.'}
                     {item.type === 'story_like' &&
                       `liked your story "${item.storyTitle || 'Story'}".`}
+                    {item.type === 'story_reflection' && (
+                      <span>
+                        commented on your story <span className="text-amber-400 font-medium">"{item.storyTitle || 'Story'}"</span>: <span className="text-slate-300 italic">"{item.message}"</span>
+                      </span>
+                    )}
                   </p>
 
                   <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -176,7 +191,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({
               <Sparkles className="w-6 h-6 text-slate-600 mx-auto" />
               <p className="font-medium text-slate-300">No notifications yet</p>
               <p className="text-[11px] text-slate-500">
-                You'll receive alerts when members follow you or like your stories.
+                You'll receive alerts when members follow you, like your stories, or leave comments.
               </p>
             </div>
           )}

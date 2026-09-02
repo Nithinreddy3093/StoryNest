@@ -779,7 +779,7 @@ export const StoryReaderPage: React.FC<StoryReaderPageProps> = ({
             </div>
 
             {/* Reader Reflections & Notes */}
-            <div className={`p-5 sm:p-7 rounded-2xl border shadow-xl ${getContainerBg()}`}>
+            <div id="comments-section" className={`p-5 sm:p-7 rounded-2xl border shadow-xl scroll-mt-24 ${getContainerBg()}`}>
               <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-white/5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">

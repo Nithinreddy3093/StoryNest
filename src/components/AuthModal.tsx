@@ -16,15 +16,19 @@ import {
   Loader2,
   BookOpen,
   PenTool,
+  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const AuthModal: React.FC = () => {
   const {
+    currentUser,
     showAuthModal,
     setShowAuthModal,
     authModalMode,
     setAuthModalMode,
+    authErrorCode,
+    setAuthErrorCode,
     login,
     signInWithGoogle,
     signup,
@@ -45,6 +49,24 @@ export const AuthModal: React.FC = () => {
   const [copiedDomain, setCopiedDomain] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Auto-dismiss modal immediately once user authentication state is established
+  useEffect(() => {
+    if (currentUser && showAuthModal) {
+      setShowAuthModal(false);
+    }
+  }, [currentUser, showAuthModal, setShowAuthModal]);
+
+  // Handle ESC key press to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showAuthModal) {
+        setShowAuthModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAuthModal, setShowAuthModal]);
+
   // Reset local state when modal opens or mode changes
   useEffect(() => {
     setFormError(null);
@@ -53,8 +75,9 @@ export const AuthModal: React.FC = () => {
       setPassword('');
       setConfirmPassword('');
       setIsSubmitting(false);
+      setAuthErrorCode(null);
     }
-  }, [showAuthModal, authModalMode]);
+  }, [showAuthModal, authModalMode, setAuthErrorCode]);
 
   if (!showAuthModal) return null;
 
@@ -64,9 +87,12 @@ export const AuthModal: React.FC = () => {
     setIsGoogleLoading(true);
     setDomainError(null);
     setFormError(null);
+    setAuthErrorCode(null);
     try {
       const ok = await signInWithGoogle();
-      if (!ok) {
+      if (ok) {
+        setShowAuthModal(false);
+      } else {
         if (
           window.location.hostname &&
           !window.location.hostname.includes('firebaseapp.com') &&
@@ -109,7 +135,12 @@ export const AuthModal: React.FC = () => {
       }
       setIsSubmitting(true);
       try {
-        await login(cleanEmail, password);
+        const ok = await login(cleanEmail, password);
+        if (ok) {
+          setShowAuthModal(false);
+        } else if (authErrorCode === 'auth/operation-not-allowed') {
+          setFormError('Email/Password provider is disabled in Firebase Console. Please continue with Google or enable the provider in Firebase Console.');
+        }
       } finally {
         setIsSubmitting(false);
       }
@@ -132,7 +163,17 @@ export const AuthModal: React.FC = () => {
       }
       setIsSubmitting(true);
       try {
-        await signup(name.trim(), cleanEmail, password, role);
+        const ok = await signup(name.trim(), cleanEmail, password, role);
+        if (ok) {
+          setShowAuthModal(false);
+        } else {
+          if (authErrorCode === 'auth/email-already-in-use') {
+            setAuthModalMode('login');
+            setFormError('An account with this email already exists. Please enter your password or sign in with Google.');
+          } else if (authErrorCode === 'auth/operation-not-allowed') {
+            setFormError('Email/Password provider is disabled in Firebase Console. Please continue with Google or enable the provider in Firebase Console.');
+          }
+        }
       } finally {
         setIsSubmitting(false);
       }
@@ -150,12 +191,19 @@ export const AuthModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setShowAuthModal(false);
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 15 }}
-        className="relative w-full max-w-md bg-[#0b111e] border border-slate-700/80 rounded-2xl shadow-2xl p-6 sm:p-8 text-slate-100 overflow-hidden my-auto"
+        className="relative w-full max-w-md max-h-[92vh] overflow-y-auto bg-[#0b111e] border border-slate-700/80 rounded-2xl shadow-2xl p-5 sm:p-8 text-slate-100 my-auto scrollbar-thin scrollbar-thumb-slate-700"
       >
         {/* Glow backdrop */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -308,6 +356,74 @@ export const AuthModal: React.FC = () => {
           <div className="mb-4 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{formError}</span>
+          </div>
+        )}
+
+        {/* Account Already Exists Banner (e.g. from Google Sign-In) */}
+        {authErrorCode === 'auth/email-already-in-use' && (
+          <div className="mb-4 p-3.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-slate-300 text-xs leading-relaxed">
+            <div className="flex items-center gap-1.5 font-semibold text-sky-400 mb-1.5">
+              <Sparkles className="w-4 h-4" />
+              <span>Account Already Registered</span>
+            </div>
+            <p className="text-slate-300 mb-2.5">
+              An account with <strong className="text-amber-400">{email || 'this email'}</strong> is already registered. If you registered via Google, click below to sign in instantly with one tap.
+            </p>
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+              ) : (
+                <>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
+                    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
+                    <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z" />
+                    <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 17C3.7 20.7 7.5 24 12 24z" />
+                  </svg>
+                  <span>Sign In with Google ({email || '1-Click'})</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Firebase Operation Not Allowed Helper Banner */}
+        {authErrorCode === 'auth/operation-not-allowed' && (
+          <div className="mb-4 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-slate-300 text-xs leading-relaxed">
+            <div className="flex items-center gap-1.5 font-semibold text-amber-400 mb-1.5">
+              <AlertTriangle className="w-4 h-4" />
+              <span>Email/Password Sign-In Disabled</span>
+            </div>
+            <p className="text-slate-300 mb-2">
+              The Email &amp; Password provider is not enabled in Firebase Console. Please use Google Sign-in to access your account instantly.
+            </p>
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+              ) : (
+                <>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
+                    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
+                    <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z" />
+                    <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 17C3.7 20.7 7.5 24 12 24z" />
+                  </svg>
+                  <span>Sign In with Google Instead</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
           </div>
         )}
 

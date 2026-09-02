@@ -177,7 +177,7 @@ service cloud.firestore {
     // 3. Notifications
     match /notifications/{notificationId} {
       allow get, list: if isSignedIn() && (resource.data.recipientId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming());
+      allow create: if isValidId(notificationId) && isValidNotification(incoming());
       allow update, delete: if isSignedIn() && isValidId(notificationId) && (existing().recipientId == request.auth.uid || isAdmin());
     }
 

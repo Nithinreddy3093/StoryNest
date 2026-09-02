@@ -55,6 +55,8 @@ interface AppContextType {
   setShowAuthModal: (show: boolean) => void;
   authModalMode: 'login' | 'signup' | 'forgot';
   setAuthModalMode: (mode: 'login' | 'signup' | 'forgot') => void;
+  authErrorCode: string | null;
+  setAuthErrorCode: (code: string | null) => void;
   login: (email: string, password?: string, role?: 'admin' | 'author' | 'reader') => Promise<boolean>;
   signInWithGoogle: () => Promise<boolean>;
   signup: (name: string, email: string, password?: string, role?: 'author' | 'reader', username?: string) => Promise<boolean>;
@@ -164,6 +166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup' | 'forgot'>('login');
+  const [authErrorCode, setAuthErrorCode] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Toast Helper
@@ -197,6 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAuthReady(true);
 
       if (fbUser) {
+        setShowAuthModal(false);
         const isAdmin = fbUser.email?.toLowerCase() === 'mudiyamnamitha7@gmail.com';
         try {
           const userDocRef = doc(db, 'users', fbUser.uid);
@@ -478,6 +482,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password?: string,
     _role: 'admin' | 'author' | 'reader' = 'reader'
   ): Promise<boolean> => {
+    setAuthErrorCode(null);
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       addToast('Please enter your email address.', 'warning');
@@ -546,6 +551,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (error: any) {
       console.error('Email sign-in error:', error);
       const errorCode = error?.code || '';
+      setAuthErrorCode(errorCode);
       if (
         errorCode === 'auth/user-not-found' ||
         errorCode === 'auth/wrong-password' ||
@@ -559,7 +565,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else if (errorCode === 'auth/too-many-requests') {
         addToast('Too many failed attempts. Please wait a moment or reset your password.', 'error');
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Email & Password sign-in is not enabled in Firebase. Please use Google Sign-in or enable Email/Password provider in Firebase Console.', 'warning');
+        addToast('Email & Password sign-in is not enabled in Firebase Console. Please use Google Sign-in or enable Email/Password provider in Firebase Console.', 'warning');
       } else {
         addToast(error.message || 'Failed to sign in. Please try again.', 'error');
       }
@@ -574,6 +580,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     role: 'author' | 'reader' = 'reader',
     customUsername?: string
   ): Promise<boolean> => {
+    setAuthErrorCode(null);
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
 
@@ -658,7 +665,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (error: any) {
       console.error('Signup error:', error);
       const errorCode = error?.code || '';
+      setAuthErrorCode(errorCode);
+
       if (errorCode === 'auth/email-already-in-use') {
+        // If email already in use, attempt automatic sign in with the provided password
+        if (password) {
+          try {
+            const loginOk = await login(cleanEmail, password);
+            if (loginOk) {
+              addToast('Signed in with your existing account.', 'success');
+              return true;
+            }
+          } catch {
+            // fall through to warning toast
+          }
+        }
         addToast('An account with this email already exists. Please sign in instead.', 'warning');
       } else if (errorCode === 'auth/invalid-email') {
         addToast('Please enter a valid email address.', 'error');
@@ -1380,7 +1401,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Reader Reflections Methods
+  // Reader Reflections / Comments Methods
   const addReflection = async (
     storyId: string,
     content: string,
@@ -1423,33 +1444,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return null;
     }
 
-    // If story has an author who is not the current user, notify author
-    const targetStory = stories.find((s) => s.id === storyId);
-    if (
-      targetStory &&
-      targetStory.authorId &&
-      (!currentUser || targetStory.authorId !== currentUser.id)
-    ) {
-      const notifId = 'notif_' + Date.now();
-      const reflectionNotif: AppNotification = {
-        id: notifId,
-        recipientId: targetStory.authorId,
-        type: 'story_reflection',
-        actorId: authorUserId,
-        actorName: authorName,
-        actorUsername: authorUsername,
-        actorAvatar: authorAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-        storyId: targetStory.id,
-        storyTitle: targetStory.title,
-        message: `left a reflection on "${targetStory.title}": "${trimmed.slice(0, 60)}${trimmed.length > 60 ? '...' : ''}"`,
-        read: false,
-        createdAt: timestamp,
-      };
-      try {
-        await setDoc(doc(db, 'notifications', notifId), reflectionNotif);
-      } catch {
-        // Notification write notice
+    // Instagram-style comment notification for the story author / post creator
+    try {
+      let targetStory = stories.find((s) => s.id === storyId);
+      if (!targetStory) {
+        try {
+          const sSnap = await getDoc(doc(db, 'stories', storyId));
+          if (sSnap.exists()) {
+            targetStory = sSnap.data() as Story;
+          }
+        } catch {
+          // ignore
+        }
       }
+
+      if (targetStory) {
+        let recipientAuthorId: string | null = null;
+        if (targetStory.authorId && targetStory.authorId !== 'guest') {
+          recipientAuthorId = targetStory.authorId;
+        } else if (targetStory.author) {
+          const authorUser = await getUserByIdOrPenName(targetStory.author);
+          if (authorUser) {
+            recipientAuthorId = authorUser.id;
+          }
+        }
+
+        // Send notification to author if author is someone else
+        if (
+          recipientAuthorId &&
+          recipientAuthorId !== authorUserId &&
+          (!currentUser || (currentUser.id !== recipientAuthorId && currentUser.uid !== recipientAuthorId))
+        ) {
+          const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+          const commentSnippet = trimmed.length > 80 ? trimmed.slice(0, 80) + '...' : trimmed;
+          const reflectionNotif: AppNotification = {
+            id: notifId,
+            recipientId: recipientAuthorId,
+            type: 'story_reflection',
+            actorId: authorUserId,
+            actorName: authorName,
+            actorUsername: authorUsername,
+            actorAvatar: authorAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+            storyId: targetStory.id,
+            storyTitle: targetStory.title,
+            message: commentSnippet,
+            read: false,
+            createdAt: timestamp,
+          };
+          await setDoc(doc(db, 'notifications', notifId), reflectionNotif);
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Comment notification note:', notifErr);
     }
 
     addToast('Reflection posted successfully!', 'success');
@@ -1778,6 +1824,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setShowAuthModal,
         authModalMode,
         setAuthModalMode,
+        authErrorCode,
+        setAuthErrorCode,
         login,
         signInWithGoogle,
         signup,

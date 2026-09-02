@@ -24,6 +24,9 @@ const rawBucket = firebaseConfig.storageBucket || `${firebaseConfig.projectId}.a
 const storageBucketUrl = rawBucket.startsWith('gs://') ? rawBucket : `gs://${rawBucket}`;
 export const storage = getStorage(app, storageBucketUrl);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
 
 export enum OperationType {
   CREATE = 'create',
