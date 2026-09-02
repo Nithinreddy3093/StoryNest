@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
+  EmailAuthProvider,
   signInWithPopup,
   signOut as fbSignOut,
   onAuthStateChanged,
@@ -9,6 +10,10 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  updatePassword,
+  linkWithCredential,
+  linkWithPopup,
+  fetchSignInMethodsForEmail,
   User as FirebaseUser,
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
@@ -96,6 +101,11 @@ export {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  updatePassword,
+  linkWithCredential,
+  linkWithPopup,
+  fetchSignInMethodsForEmail,
+  EmailAuthProvider,
 };
 export { ref, uploadBytes, getDownloadURL };
 export type { FirebaseUser };

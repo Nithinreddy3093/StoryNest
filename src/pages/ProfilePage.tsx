@@ -49,6 +49,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
     deleteStory,
     updateUserProfile,
     deleteAccount,
+    linkPasswordToAccount,
+    linkGoogleToAccount,
+    getLinkedProviders,
     toggleFollowUser,
     getFollowStatus,
     getFollowerUserIds,
@@ -92,6 +95,39 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
   const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
   const [isDeletingStory, setIsDeletingStory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isLinkingPassword, setIsLinkingPassword] = useState(false);
+  const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
+
+  const linkedProviders = getLinkedProviders ? getLinkedProviders() : [];
+  const hasGoogleLinked = linkedProviders.includes('google.com');
+  const hasPasswordLinked = linkedProviders.includes('password');
+
+  const handleLinkPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      addToast('Password must be at least 6 characters.', 'warning');
+      return;
+    }
+    setIsLinkingPassword(true);
+    try {
+      const ok = await linkPasswordToAccount(newPassword);
+      if (ok) {
+        setNewPassword('');
+      }
+    } finally {
+      setIsLinkingPassword(false);
+    }
+  };
+
+  const handleLinkGoogle = async () => {
+    setIsLinkingGoogle(true);
+    try {
+      await linkGoogleToAccount();
+    } finally {
+      setIsLinkingGoogle(false);
+    }
+  };
 
   // Handle direct avatar photo update from modal
   const handleSaveAvatar = async (newAvatarUrl: string) => {
@@ -1158,6 +1194,97 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
                         <span>Normal (16px)</span>
                         <span>Large (24px)</span>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Connected Sign-In Methods & Security */}
+                <div className="space-y-4 p-4 sm:p-5 rounded-2xl bg-slate-900/70 border border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                    <h4 className="font-serif-heading text-sm font-bold text-slate-200">
+                      Security &amp; Connected Sign-In Methods
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    View active authentication providers associated with your StoryNest account. You can link both Google and Email &amp; Password to access your account using either method.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {/* Google Provider Status */}
+                    <div className="p-3.5 rounded-xl bg-[#070b14] border border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
+                          <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
+                          <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z" />
+                          <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 17C3.7 20.7 7.5 24 12 24z" />
+                        </svg>
+                        <div>
+                          <div className="text-xs font-semibold text-slate-200">Google Sign-In</div>
+                          <div className="text-[10px] text-slate-400">
+                            {hasGoogleLinked ? 'Connected' : 'Not linked'}
+                          </div>
+                        </div>
+                      </div>
+                      {hasGoogleLinked ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          Active
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleLinkGoogle}
+                          disabled={isLinkingGoogle}
+                          className="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+                        >
+                          {isLinkingGoogle ? 'Linking...' : 'Connect'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Email/Password Provider Status */}
+                    <div className="p-3.5 rounded-xl bg-[#070b14] border border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <UserIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                        <div>
+                          <div className="text-xs font-semibold text-slate-200">Email &amp; Password</div>
+                          <div className="text-[10px] text-slate-400">
+                            {hasPasswordLinked ? 'Password set' : 'No password set'}
+                          </div>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        hasPasswordLinked 
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}>
+                        {hasPasswordLinked ? 'Active' : 'Optional'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Add / Update Password form */}
+                  <div className="pt-2">
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                      {hasPasswordLinked ? 'Update Account Password' : 'Set Account Password (allows Email + Password sign-in)'}
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="password"
+                        placeholder="New password (min 6 characters)"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="flex-1 bg-[#070b14] border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleLinkPassword}
+                        disabled={isLinkingPassword || !newPassword}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-amber-400 border border-amber-500/30 font-semibold text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap"
+                      >
+                        {isLinkingPassword ? 'Saving...' : hasPasswordLinked ? 'Change Password' : 'Set Password'}
+                      </button>
                     </div>
                   </div>
                 </div>

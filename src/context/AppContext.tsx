@@ -23,6 +23,10 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  updatePassword,
+  linkWithCredential,
+  linkWithPopup,
+  EmailAuthProvider,
   OperationType,
   handleFirestoreError,
   FirebaseUser,
@@ -61,6 +65,9 @@ interface AppContextType {
   signInWithGoogle: () => Promise<boolean>;
   signup: (name: string, email: string, password?: string, role?: 'author' | 'reader', username?: string) => Promise<boolean>;
   resetPassword: (email: string) => Promise<boolean>;
+  linkPasswordToAccount: (password: string) => Promise<boolean>;
+  linkGoogleToAccount: () => Promise<boolean>;
+  getLinkedProviders: () => string[];
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<User>) => Promise<boolean>;
   deleteAccount: () => Promise<void>;
@@ -182,18 +189,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Helper: derive clean username from email or display name
-  const generateUsername = (nameOrEmail: string): string => {
-    const clean = nameOrEmail
+  // Helper: derive clean and unique username from email or display name
+  const generateUniqueUsername = async (nameOrEmail: string, excludeUid?: string): Promise<string> => {
+    const raw = (nameOrEmail || 'reader')
       .toLowerCase()
       .split('@')[0]
       .replace(/[^a-z0-9_]/g, '_')
       .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '')
       .slice(0, 20);
-    return clean.length >= 3 ? clean : `user_${clean || 'member'}_${Math.floor(Math.random() * 1000)}`;
+    
+    const base = raw.length >= 3 ? raw : `${raw || 'user'}_reader`;
+    
+    // Check if base username is already available
+    const baseAvail = await isUsernameAvailable(base, excludeUid);
+    if (baseAvail) return base;
+
+    // Suffix checks
+    for (let i = 1; i <= 50; i++) {
+      const candidate = `${base.slice(0, 20)}_${i}`;
+      const avail = await isUsernameAvailable(candidate, excludeUid);
+      if (avail) return candidate;
+    }
+
+    return `${base.slice(0, 16)}_${Math.floor(1000 + Math.random() * 9000)}`;
   };
 
-  // 1. Firebase Auth listener - Real users only
+  // 1. Firebase Auth listener - Single source of truth
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
@@ -215,7 +237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 { merge: true }
               );
             } catch {
-              // Admin record
+              // Admin record note
             }
           }
 
@@ -225,7 +247,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...data,
               id: fbUser.uid,
               role: isAdmin ? 'admin' : (data.role || 'reader'),
-              username: data.username || generateUsername(fbUser.email || fbUser.displayName || 'user'),
+              displayName: data.displayName || data.name || fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
+              name: data.name || data.displayName || fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
+              email: fbUser.email || data.email || '',
+              photoURL: fbUser.photoURL || data.photoURL || data.avatar || null,
+              avatar: data.avatar || fbUser.photoURL || 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
               accountPrivacy: data.accountPrivacy || (data.isPrivate ? 'private' : 'public'),
               isPrivate: data.accountPrivacy === 'private' || !!data.isPrivate,
               followers: Array.isArray(data.followers) ? data.followers : [],
@@ -241,14 +267,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
             setCurrentUser(finalUser);
           } else {
-            const generatedUser = generateUsername(fbUser.email || fbUser.displayName || 'user');
+            const generatedUser = await generateUniqueUsername(fbUser.email || fbUser.displayName || 'user', fbUser.uid);
+            const initialDisplayName = fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User';
             const newUser: User = {
               id: fbUser.uid,
-              name: fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
-              displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
+              name: initialDisplayName,
+              displayName: initialDisplayName,
               username: generatedUser,
-              penName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Author',
+              penName: initialDisplayName,
               email: fbUser.email || '',
+              photoURL: fbUser.photoURL || null,
               avatar: fbUser.photoURL || 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
               role: isAdmin ? 'admin' : 'reader',
               bio: '',
@@ -266,6 +294,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               fontSize: 16,
               autoScroll: false,
               createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
             };
             try {
               await setDoc(userDocRef, newUser);
@@ -278,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setCurrentUser(null);
         }
       } else {
-        // No authenticated user -> currentUser is null
+        // No authenticated user -> clear user state
         setCurrentUser(null);
       }
     });
@@ -460,16 +489,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     } catch (error: any) {
       console.error('Google Sign-in failed:', error);
-      if (error?.code === 'auth/unauthorized-domain') {
+      const errorCode = error?.code || '';
+      if (errorCode === 'auth/unauthorized-domain') {
         const currentHostname = window.location.hostname;
         addToast(
           `Domain "${currentHostname}" is not authorized in Firebase. Please add "${currentHostname}" to Firebase Console -> Authentication -> Settings -> Authorized domains.`,
           'error'
         );
-      } else if (error?.code === 'auth/popup-closed-by-user') {
+      } else if (errorCode === 'auth/popup-closed-by-user') {
         addToast('Sign-in cancelled.', 'info');
-      } else if (error?.code === 'auth/popup-blocked') {
+      } else if (errorCode === 'auth/popup-blocked') {
         addToast('Sign-in popup was blocked by your browser. Please allow popups for this site.', 'warning');
+      } else if (errorCode === 'auth/account-exists-with-different-credential') {
+        addToast('An account already exists with this email using a different sign-in method. Please sign in with your original method.', 'warning');
       } else {
         addToast(error.message || 'Google Sign-in failed. Please try again.', 'error');
       }
@@ -510,14 +542,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser(finalUser);
         addToast(`Welcome back, ${finalUser.name || finalUser.displayName || 'Reader'}!`, 'success');
       } else {
-        const generatedUser = generateUsername(fbUser.email || fbUser.displayName || 'user');
+        const generatedUser = await generateUniqueUsername(fbUser.email || fbUser.displayName || 'user', fbUser.uid);
+        const initialDisplayName = fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User';
         const newUser: User = {
           id: fbUser.uid,
-          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
-          displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'StoryNest User',
+          name: initialDisplayName,
+          displayName: initialDisplayName,
           username: generatedUser,
-          penName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Author',
+          penName: initialDisplayName,
           email: fbUser.email || cleanEmail,
+          photoURL: fbUser.photoURL || null,
           avatar: fbUser.photoURL || 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
           role: isAdmin ? 'admin' : 'reader',
           bio: '',
@@ -535,6 +569,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fontSize: 16,
           autoScroll: false,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
         try {
           await setDoc(userDocRef, newUser);
@@ -557,15 +592,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         errorCode === 'auth/wrong-password' ||
         errorCode === 'auth/invalid-credential'
       ) {
-        addToast('Invalid email or password. Please verify your credentials or create an account.', 'error');
+        addToast('Incorrect email or password.', 'error');
       } else if (errorCode === 'auth/invalid-email') {
         addToast('Please enter a valid email address.', 'error');
       } else if (errorCode === 'auth/user-disabled') {
         addToast('This account has been disabled. Please contact support.', 'error');
       } else if (errorCode === 'auth/too-many-requests') {
-        addToast('Too many failed attempts. Please wait a moment or reset your password.', 'error');
+        addToast('Too many failed attempts. Please try again later or reset your password.', 'error');
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Email & Password sign-in is not enabled in Firebase Console. Please use Google Sign-in or enable Email/Password provider in Firebase Console.', 'warning');
+        addToast('Email/Password sign-in is not enabled in Firebase Console. Please enable it under Authentication -> Sign-in method.', 'warning');
+      } else if (errorCode === 'auth/account-exists-with-different-credential') {
+        addToast('This email is already registered with another sign-in method (like Google). Please sign in with Google.', 'warning');
       } else {
         addToast(error.message || 'Failed to sign in. Please try again.', 'error');
       }
@@ -584,6 +621,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
 
+    if (!cleanName) {
+      addToast('Please enter your full name.', 'warning');
+      return false;
+    }
     if (!cleanEmail) {
       addToast('Please enter your email address.', 'warning');
       return false;
@@ -595,11 +636,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const cleanUsername = customUsername
       ? customUsername.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_')
-      : generateUsername(cleanName || cleanEmail);
+      : await generateUniqueUsername(cleanName || cleanEmail);
 
     const available = await isUsernameAvailable(cleanUsername);
     if (!available) {
-      addToast(`Username @${cleanUsername} is already taken. Please choose another name or username.`, 'error');
+      addToast(`Username @${cleanUsername} is already taken. Please choose another username.`, 'error');
       return false;
     }
 
@@ -623,6 +664,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         username: cleanUsername,
         penName: cleanName || 'Author',
         email: cleanEmail,
+        photoURL: null,
         avatar: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=300&auto=format&fit=crop',
         role: isAdmin ? 'admin' : role,
         bio: '',
@@ -640,6 +682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fontSize: 16,
         autoScroll: false,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       const userDocRef = doc(db, 'users', fbUser.uid);
@@ -654,7 +697,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             { merge: true }
           );
         } catch {
-          // admin doc
+          // admin doc note
         }
       }
 
@@ -668,25 +711,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAuthErrorCode(errorCode);
 
       if (errorCode === 'auth/email-already-in-use') {
-        // If email already in use, attempt automatic sign in with the provided password
-        if (password) {
-          try {
-            const loginOk = await login(cleanEmail, password);
-            if (loginOk) {
-              addToast('Signed in with your existing account.', 'success');
-              return true;
-            }
-          } catch {
-            // fall through to warning toast
-          }
-        }
-        addToast('An account with this email already exists. Please sign in instead.', 'warning');
+        addToast('An account already exists with this email. Please sign in instead.', 'warning');
       } else if (errorCode === 'auth/invalid-email') {
         addToast('Please enter a valid email address.', 'error');
       } else if (errorCode === 'auth/weak-password') {
-        addToast('Password is too weak. Please use at least 6 characters.', 'warning');
+        addToast('Please choose a stronger password (minimum 6 characters).', 'warning');
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Email & Password registration is not enabled in Firebase Console. Please use Google Sign-in or enable Email/Password provider.', 'warning');
+        addToast('Email/Password provider is not enabled in Firebase Console. Please enable Email/Password under Authentication > Sign-in method.', 'warning');
+      } else if (errorCode === 'auth/account-exists-with-different-credential') {
+        addToast('This email is already registered with another sign-in method. Please sign in with Google.', 'warning');
       } else {
         addToast(error.message || 'Could not create account. Please try again.', 'error');
       }
@@ -713,13 +746,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       } else if (errorCode === 'auth/invalid-email') {
         addToast('Please provide a valid email address.', 'error');
+      } else if (errorCode === 'auth/too-many-requests') {
+        addToast('Too many attempts. Please try again later.', 'error');
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Email password reset is not enabled in Firebase.', 'error');
+        addToast('Password reset is not enabled in Firebase.', 'error');
       } else {
         addToast(error.message || 'Could not send password reset email.', 'error');
       }
       return false;
     }
+  };
+
+  // Provider linking: Add Email/Password to Google Account
+  const linkPasswordToAccount = async (password: string): Promise<boolean> => {
+    if (!auth.currentUser || !auth.currentUser.email) {
+      addToast('You must be signed in with an email to set an account password.', 'error');
+      return false;
+    }
+    if (!password || password.length < 6) {
+      addToast('Password must be at least 6 characters long.', 'warning');
+      return false;
+    }
+    try {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+      await linkWithCredential(auth.currentUser, credential);
+      addToast('Password successfully linked to your account! You can now sign in using Google or Email/Password.', 'success');
+      return true;
+    } catch (error: any) {
+      console.error('Link password error:', error);
+      const code = error?.code || '';
+      if (code === 'auth/provider-already-linked') {
+        try {
+          await updatePassword(auth.currentUser, password);
+          addToast('Account password updated successfully!', 'success');
+          return true;
+        } catch (updateErr: any) {
+          addToast(updateErr.message || 'Failed to update password.', 'error');
+          return false;
+        }
+      } else if (code === 'auth/credential-already-in-use') {
+        addToast('This email/password credential is already in use by another account.', 'error');
+      } else if (code === 'auth/requires-recent-login') {
+        addToast('For security, please sign out and sign in again before linking a password.', 'warning');
+      } else {
+        addToast(error.message || 'Failed to link password.', 'error');
+      }
+      return false;
+    }
+  };
+
+  // Provider linking: Add Google to Email/Password Account
+  const linkGoogleToAccount = async (): Promise<boolean> => {
+    if (!auth.currentUser) {
+      addToast('You must be signed in to link Google.', 'error');
+      return false;
+    }
+    try {
+      await linkWithPopup(auth.currentUser, googleProvider);
+      addToast('Google account successfully linked to your StoryNest profile!', 'success');
+      return true;
+    } catch (error: any) {
+      console.error('Link Google error:', error);
+      const code = error?.code || '';
+      if (code === 'auth/provider-already-linked') {
+        addToast('Google is already linked to this account.', 'info');
+        return true;
+      } else if (code === 'auth/credential-already-in-use') {
+        addToast('This Google account is already associated with another user.', 'error');
+      } else if (code === 'auth/popup-closed-by-user') {
+        addToast('Google linking cancelled.', 'info');
+      } else {
+        addToast(error.message || 'Failed to link Google account.', 'error');
+      }
+      return false;
+    }
+  };
+
+  const getLinkedProviders = (): string[] => {
+    if (!auth.currentUser) return [];
+    return auth.currentUser.providerData.map((p) => p.providerId);
   };
 
   const logout = async () => {
@@ -731,7 +836,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Firebase logout note:', e);
     }
     setCurrentUser(null);
-    addToast('You have been signed out.', 'info');
+    addToast('You have signed out of StoryNest.', 'info');
   };
 
   // Share Modal State
@@ -1830,6 +1935,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signInWithGoogle,
         signup,
         resetPassword,
+        linkPasswordToAccount,
+        linkGoogleToAccount,
+        getLinkedProviders,
         logout,
         updateUserProfile,
         deleteAccount,
