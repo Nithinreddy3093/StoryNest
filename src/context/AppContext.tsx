@@ -42,6 +42,8 @@ import {
   FollowRelation,
   AppNotification,
   StoryReflection,
+  Series,
+  SeriesStatus,
 } from '../types';
 
 export interface ToastMessage {
@@ -113,6 +115,25 @@ interface AppContextType {
   updateStoryStatus: (storyId: string, status: StoryStatus, reason?: string) => Promise<void>;
   deleteStory: (storyId: string) => Promise<void>;
 
+  // Series
+  series: Series[];
+  seriesLoading: boolean;
+  createSeries: (data: {
+    title: string;
+    description?: string;
+    coverUrl?: string;
+    status?: SeriesStatus;
+    visibility?: 'public' | 'private' | 'unlisted';
+  }) => Promise<Series>;
+  updateSeries: (seriesId: string, updates: Partial<Series>) => Promise<void>;
+  deleteSeries: (seriesId: string) => Promise<void>;
+  addStoryToSeries: (storyId: string, seriesId: string, seriesPart?: number) => Promise<void>;
+  removeStoryFromSeries: (storyId: string) => Promise<void>;
+  reorderSeriesStories: (seriesId: string, orderedStoryIds: string[]) => Promise<void>;
+  getSeriesById: (seriesId: string) => Series | undefined;
+  getStoriesForSeries: (seriesId: string) => Story[];
+  getSeriesForAuthor: (authorId: string) => Series[];
+
   // Interactions
   toggleBookmark: (storyId: string) => Promise<boolean>;
   isBookmarked: (storyId: string) => boolean;
@@ -162,6 +183,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Core collections state - ZERO mock data, purely from Firestore
   const [stories, setStories] = useState<Story[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
+  const [series, setSeries] = useState<Series[]>([]);
+  const [seriesLoading, setSeriesLoading] = useState(true);
   const [reflections, setReflections] = useState<StoryReflection[]>([]);
   const [reflectionsLoading, setReflectionsLoading] = useState(true);
   const [follows, setFollows] = useState<FollowRelation[]>([]);
@@ -338,6 +361,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (err) => {
         console.warn('Stories listener error:', err);
         setStoriesLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // 2b. Real-time series listener from Firestore
+  useEffect(() => {
+    setSeriesLoading(true);
+    const seriesRef = collection(db, 'series');
+    const unsubscribe = onSnapshot(
+      seriesRef,
+      (snapshot) => {
+        const loadedSeries: Series[] = [];
+        snapshot.forEach((docSnap) => {
+          const s = docSnap.data() as Series;
+          loadedSeries.push({
+            ...s,
+            id: docSnap.id,
+            storyCount: typeof s.storyCount === 'number' ? s.storyCount : 0,
+          });
+        });
+        setSeries(loadedSeries);
+        setSeriesLoading(false);
+      },
+      (err) => {
+        console.warn('Series listener error:', err);
+        setSeriesLoading(false);
       }
     );
 
@@ -1761,6 +1812,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: storyData.status || 'published',
       visibility: storyData.visibility || 'public',
       rankingScore: 0,
+      seriesId: storyData.seriesId || undefined,
+      seriesPart: typeof storyData.seriesPart === 'number' ? storyData.seriesPart : undefined,
       chapters:
         storyData.chapters && storyData.chapters.length > 0
           ? storyData.chapters
@@ -1802,6 +1855,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       addToast('Your story has been published successfully!', 'success');
     }
+
+    if (newStory.seriesId) {
+      try {
+        const countInSeries = stories.filter((s) => s.seriesId === newStory.seriesId && s.id !== storyId).length + 1;
+        await updateDoc(doc(db, 'series', newStory.seriesId), {
+          storyCount: countInSeries,
+          updatedAt: new Date().toISOString(),
+        });
+        setSeries((prev) =>
+          prev.map((s) =>
+            s.id === newStory.seriesId ? { ...s, storyCount: countInSeries } : s
+          )
+        );
+      } catch (err) {
+        console.warn('Error updating series storyCount on addStory:', err);
+      }
+    }
+
     return newStory;
   };
 
@@ -1828,6 +1899,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteStory = async (storyId: string) => {
+    const targetStory = stories.find((s) => s.id === storyId);
     setStories((prev) => prev.filter((s) => s.id !== storyId));
     if (currentUser) {
       setCurrentUser((prev) => {
@@ -1846,7 +1918,307 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `stories/${storyId}`);
     }
+
+    if (targetStory?.seriesId) {
+      const remainingCount = stories.filter(
+        (s) => s.seriesId === targetStory.seriesId && s.id !== storyId
+      ).length;
+      try {
+        await updateDoc(doc(db, 'series', targetStory.seriesId), {
+          storyCount: remainingCount,
+          updatedAt: new Date().toISOString(),
+        });
+        setSeries((prev) =>
+          prev.map((s) =>
+            s.id === targetStory.seriesId ? { ...s, storyCount: remainingCount } : s
+          )
+        );
+      } catch (err) {
+        console.warn('Error updating series count on deleteStory:', err);
+      }
+    }
+
     addToast('Story deleted successfully.', 'info');
+  };
+
+  // Series Methods
+  const createSeries = async (data: {
+    title: string;
+    description?: string;
+    coverUrl?: string;
+    status?: SeriesStatus;
+    visibility?: 'public' | 'private' | 'unlisted';
+  }): Promise<Series> => {
+    if (!currentUser || !auth.currentUser) {
+      setShowAuthModal(true);
+      setAuthModalMode('login');
+      throw new Error('Authentication required to create a series.');
+    }
+
+    const seriesId = 'series-' + Date.now();
+    const newSeries: Series = {
+      id: seriesId,
+      title: data.title.trim() || 'Untitled Series',
+      description: data.description?.trim() || '',
+      coverUrl:
+        data.coverUrl?.trim() ||
+        'https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=1000&auto=format&fit=crop',
+      authorId: auth.currentUser.uid,
+      authorName:
+        currentUser.displayName ||
+        currentUser.name ||
+        currentUser.penName ||
+        auth.currentUser.displayName ||
+        'Author',
+      status: data.status || 'ongoing',
+      visibility: data.visibility || 'public',
+      storyCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, 'series', seriesId), newSeries);
+      setSeries((prev) => [newSeries, ...prev]);
+      addToast('Series created successfully!', 'success');
+      return newSeries;
+    } catch (error) {
+      console.error('Error creating series in Firestore:', error);
+      handleFirestoreError(error, OperationType.CREATE, `series/${seriesId}`);
+      throw error;
+    }
+  };
+
+  const updateSeries = async (seriesId: string, updates: Partial<Series>): Promise<void> => {
+    if (!currentUser || !auth.currentUser) {
+      throw new Error('Authentication required to update a series.');
+    }
+
+    const existingSeries = series.find((s) => s.id === seriesId);
+    if (existingSeries && existingSeries.authorId !== auth.currentUser.uid && currentUser.role !== 'admin') {
+      throw new Error('You do not have permission to edit this series.');
+    }
+
+    const cleanUpdates: Record<string, any> = {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await updateDoc(doc(db, 'series', seriesId), cleanUpdates);
+      setSeries((prev) =>
+        prev.map((s) => (s.id === seriesId ? { ...s, ...cleanUpdates } : s))
+      );
+      addToast('Series updated successfully!', 'success');
+    } catch (error) {
+      console.error('Error updating series:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`);
+      throw error;
+    }
+  };
+
+  const deleteSeries = async (seriesId: string): Promise<void> => {
+    if (!currentUser || !auth.currentUser) {
+      throw new Error('Authentication required to delete a series.');
+    }
+
+    const existingSeries = series.find((s) => s.id === seriesId);
+    if (existingSeries && existingSeries.authorId !== auth.currentUser.uid && currentUser.role !== 'admin') {
+      throw new Error('You do not have permission to delete this series.');
+    }
+
+    // Unlink all stories in this series
+    const storiesInSeries = stories.filter((s) => s.seriesId === seriesId);
+    for (const storyItem of storiesInSeries) {
+      try {
+        await updateDoc(doc(db, 'stories', storyItem.id), {
+          seriesId: '',
+          seriesPart: 0,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Error unlinking story from series:', err);
+      }
+    }
+
+    setStories((prev) =>
+      prev.map((s) =>
+        s.seriesId === seriesId ? { ...s, seriesId: undefined, seriesPart: undefined } : s
+      )
+    );
+
+    try {
+      await deleteDoc(doc(db, 'series', seriesId));
+      setSeries((prev) => prev.filter((s) => s.id !== seriesId));
+      addToast('Series deleted. Stories remain safe in your library.', 'info');
+    } catch (error) {
+      console.error('Error deleting series:', error);
+      handleFirestoreError(error, OperationType.DELETE, `series/${seriesId}`);
+      throw error;
+    }
+  };
+
+  const addStoryToSeries = async (
+    storyId: string,
+    seriesId: string,
+    seriesPart?: number
+  ): Promise<void> => {
+    if (!currentUser || !auth.currentUser) {
+      throw new Error('Authentication required.');
+    }
+
+    const targetStory = stories.find((s) => s.id === storyId);
+    if (!targetStory) throw new Error('Story not found.');
+
+    if (targetStory.authorId !== auth.currentUser.uid && currentUser.role !== 'admin') {
+      throw new Error('You can only add your own stories to a series.');
+    }
+
+    const targetSeries = series.find((s) => s.id === seriesId);
+    if (!targetSeries) throw new Error('Series not found.');
+
+    if (targetSeries.authorId !== auth.currentUser.uid && currentUser.role !== 'admin') {
+      throw new Error('You can only add stories to your own series.');
+    }
+
+    let assignedPart = seriesPart;
+    if (!assignedPart || assignedPart <= 0) {
+      const existingInSeries = stories.filter((s) => s.seriesId === seriesId && s.id !== storyId);
+      const maxPart = existingInSeries.reduce(
+        (max, s) => Math.max(max, s.seriesPart || 0),
+        0
+      );
+      assignedPart = maxPart + 1;
+    }
+
+    try {
+      await updateDoc(doc(db, 'stories', storyId), {
+        seriesId,
+        seriesPart: assignedPart,
+        updatedAt: new Date().toISOString(),
+      });
+
+      const updatedCount = stories.filter((s) => s.seriesId === seriesId && s.id !== storyId).length + 1;
+      await updateDoc(doc(db, 'series', seriesId), {
+        storyCount: updatedCount,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setStories((prev) =>
+        prev.map((s) =>
+          s.id === storyId ? { ...s, seriesId, seriesPart: assignedPart } : s
+        )
+      );
+
+      setSeries((prev) =>
+        prev.map((s) => (s.id === seriesId ? { ...s, storyCount: updatedCount } : s))
+      );
+
+      addToast(`Added "${targetStory.title}" to "${targetSeries.title}" (Part ${assignedPart})`, 'success');
+    } catch (error) {
+      console.error('Error adding story to series:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `stories/${storyId}`);
+      throw error;
+    }
+  };
+
+  const removeStoryFromSeries = async (storyId: string): Promise<void> => {
+    if (!currentUser || !auth.currentUser) {
+      throw new Error('Authentication required.');
+    }
+
+    const targetStory = stories.find((s) => s.id === storyId);
+    if (!targetStory) throw new Error('Story not found.');
+
+    if (targetStory.authorId !== auth.currentUser.uid && currentUser.role !== 'admin') {
+      throw new Error('You can only remove stories you own.');
+    }
+
+    const previousSeriesId = targetStory.seriesId;
+
+    try {
+      await updateDoc(doc(db, 'stories', storyId), {
+        seriesId: '',
+        seriesPart: 0,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setStories((prev) =>
+        prev.map((s) =>
+          s.id === storyId ? { ...s, seriesId: undefined, seriesPart: undefined } : s
+        )
+      );
+
+      if (previousSeriesId) {
+        const remainingCount = stories.filter(
+          (s) => s.seriesId === previousSeriesId && s.id !== storyId
+        ).length;
+        await updateDoc(doc(db, 'series', previousSeriesId), {
+          storyCount: remainingCount,
+          updatedAt: new Date().toISOString(),
+        });
+        setSeries((prev) =>
+          prev.map((s) =>
+            s.id === previousSeriesId ? { ...s, storyCount: remainingCount } : s
+          )
+        );
+      }
+
+      addToast(`Removed "${targetStory.title}" from series. Story remains safe in your library.`, 'info');
+    } catch (error) {
+      console.error('Error removing story from series:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `stories/${storyId}`);
+      throw error;
+    }
+  };
+
+  const reorderSeriesStories = async (
+    seriesId: string,
+    orderedStoryIds: string[]
+  ): Promise<void> => {
+    if (!currentUser || !auth.currentUser) {
+      throw new Error('Authentication required.');
+    }
+
+    for (let index = 0; index < orderedStoryIds.length; index++) {
+      const storyId = orderedStoryIds[index];
+      const partNum = index + 1;
+      try {
+        await updateDoc(doc(db, 'stories', storyId), {
+          seriesId,
+          seriesPart: partNum,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Error updating part order for story:', storyId, err);
+      }
+    }
+
+    setStories((prev) =>
+      prev.map((s) => {
+        const idx = orderedStoryIds.indexOf(s.id);
+        if (idx >= 0 && s.seriesId === seriesId) {
+          return { ...s, seriesPart: idx + 1 };
+        }
+        return s;
+      })
+    );
+
+    addToast('Series order saved successfully!', 'success');
+  };
+
+  const getSeriesById = (seriesId: string): Series | undefined => {
+    return series.find((s) => s.id === seriesId);
+  };
+
+  const getStoriesForSeries = (seriesId: string): Story[] => {
+    return stories
+      .filter((s) => s.seriesId === seriesId)
+      .sort((a, b) => (a.seriesPart ?? 999) - (b.seriesPart ?? 999));
+  };
+
+  const getSeriesForAuthor = (authorId: string): Series[] => {
+    return series.filter((s) => s.authorId === authorId);
   };
 
   // Reports
@@ -1972,6 +2344,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addStory,
         updateStoryStatus,
         deleteStory,
+        series,
+        seriesLoading,
+        createSeries,
+        updateSeries,
+        deleteSeries,
+        addStoryToSeries,
+        removeStoryFromSeries,
+        reorderSeriesStories,
+        getSeriesById,
+        getStoriesForSeries,
+        getSeriesForAuthor,
         toggleBookmark,
         isBookmarked,
         removeBookmark,

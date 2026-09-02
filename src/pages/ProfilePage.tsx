@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { User, Story, ReaderTheme } from '../types';
 import { StoryCard } from '../components/StoryCard';
+import { SeriesCard } from '../components/SeriesCard';
+import { CreateSeriesModal } from '../components/CreateSeriesModal';
 import { FollowListModal } from '../components/FollowListModal';
 import { DeleteStoryModal } from '../components/DeleteStoryModal';
 import { EditAvatarModal } from '../components/EditAvatarModal';
@@ -33,6 +35,7 @@ import {
   Users,
   Camera,
   Image as ImageIcon,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -45,6 +48,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
   const {
     currentUser,
     stories,
+    series,
+    getSeriesForAuthor,
     readingProgress,
     deleteStory,
     updateUserProfile,
@@ -71,7 +76,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
   // Target Profile state
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stories' | 'bookmarks' | 'history' | 'requests' | 'settings'>('stories');
+  const [activeTab, setActiveTab] = useState<'stories' | 'series' | 'bookmarks' | 'history' | 'requests' | 'settings'>('stories');
+  const [isCreateSeriesModalOpen, setIsCreateSeriesModalOpen] = useState(false);
 
   // Follow lists modal state
   const [followModalOpen, setFollowModalOpen] = useState(false);
@@ -606,6 +612,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
             <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-800/80 -mx-3 px-3 sm:mx-0 sm:px-0 touch-pan-x">
               {[
                 { id: 'stories', label: 'My Stories', icon: <BookOpen className="w-4 h-4 shrink-0" />, count: userStories.length },
+                {
+                  id: 'series',
+                  label: 'Series & Sagas',
+                  icon: <Layers className="w-4 h-4 shrink-0" />,
+                  count: getSeriesForAuthor(profileUser?.id || currentUser?.id || '').length,
+                },
                 { id: 'bookmarks', label: 'Bookmarks', icon: <Bookmark className="w-4 h-4 shrink-0" />, count: bookmarkedStories.length },
                 { id: 'history', label: 'Reading History', icon: <History className="w-4 h-4 shrink-0" />, count: historyStories.length },
                 {
@@ -775,6 +787,66 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 1.5: SERIES & SAGAS */}
+          {activeTab === 'series' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif-heading text-lg font-bold text-slate-100 flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-amber-400" />
+                    <span>Story Series & Sagas</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Multi-part book sagas, serialized novels, and sequential volume collections.
+                  </p>
+                </div>
+                {isOwnProfile && (
+                  <button
+                    onClick={() => setIsCreateSeriesModalOpen(true)}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-md shadow-amber-500/20"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New Series</span>
+                  </button>
+                )}
+              </div>
+
+              {(() => {
+                const authorSeriesList = getSeriesForAuthor(profileUser?.id || currentUser?.id || '');
+                return authorSeriesList.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {authorSeriesList.map((ser) => (
+                      <SeriesCard key={ser.id} series={ser} navigate={navigate} showAuthor={false} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 sm:py-16 text-center bg-[#0b111e]/40 rounded-2xl sm:rounded-3xl border border-slate-800 p-6 sm:p-8 space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto">
+                      <Layers className="w-6 h-6" />
+                    </div>
+                    <h3 className="font-serif-heading text-sm sm:text-base font-bold text-slate-200">
+                      No Series Created Yet
+                    </h3>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      {isOwnProfile
+                        ? 'Create a series to bundle your chapters and manuscripts into an episodic saga for readers.'
+                        : 'This author has not created any multi-part series yet.'}
+                    </p>
+                    {isOwnProfile && (
+                      <button
+                        onClick={() => setIsCreateSeriesModalOpen(true)}
+                        className="px-5 py-2.5 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/20 inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Create First Series</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1384,6 +1456,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate, subroute }) 
         currentAvatar={avatar || currentUser?.avatar || ''}
         onClose={() => setAvatarModalOpen(false)}
         onSaveAvatar={handleSaveAvatar}
+      />
+
+      {/* Create / Edit Series Modal */}
+      <CreateSeriesModal
+        isOpen={isCreateSeriesModalOpen}
+        onClose={() => setIsCreateSeriesModalOpen(false)}
       />
     </div>
   );

@@ -112,9 +112,30 @@
         "rankingScore": { "type": "number", "description": "Calculated leaderboard ranking score" },
         "featured": { "type": "boolean", "description": "Whether story is featured" },
         "chapters": { "type": "array", "description": "Story chapter list" },
-        "rejectionReason": { "type": "string", "description": "Editorial rejection feedback", "maxLength": 500 }
+        "rejectionReason": { "type": "string", "description": "Editorial rejection feedback", "maxLength": 500 },
+        "seriesId": { "type": "string", "description": "ID of the series this story belongs to", "maxLength": 128 },
+        "seriesPart": { "type": "number", "description": "Part or book number within the series" }
       },
       "required": ["id", "title", "author", "authorId", "description", "genre", "status", "chapters"]
+    },
+    "Series": {
+      "title": "Series",
+      "description": "A curated collection of connected story parts or sagas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique series ID", "maxLength": 128 },
+        "title": { "type": "string", "description": "Series title", "maxLength": 300 },
+        "description": { "type": "string", "description": "Series overview and synopsis", "maxLength": 5000 },
+        "coverUrl": { "type": "string", "description": "Series cover art URL", "maxLength": 1000 },
+        "authorId": { "type": "string", "description": "Firebase Auth UID of the author", "maxLength": 128 },
+        "authorName": { "type": "string", "description": "Author display name", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["ongoing", "completed", "hiatus"], "description": "Series publication status" },
+        "visibility": { "type": "string", "enum": ["public", "private", "unlisted"], "description": "Series visibility" },
+        "storyCount": { "type": "number", "description": "Total stories in this series" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp" }
+      },
+      "required": ["id", "title", "authorId", "status"]
     },
     "StoryReport": {
       "title": "StoryReport",
@@ -187,6 +208,10 @@
     "/stories/{storyId}": {
       "schema": { "$ref": "#/entities/Story" },
       "description": "Stories and chapters library"
+    },
+    "/series/{seriesId}": {
+      "schema": { "$ref": "#/entities/Series" },
+      "description": "Story series collections created by authors"
     },
     "/reflections/{reflectionId}": {
       "schema": { "$ref": "#/entities/StoryReflection" },

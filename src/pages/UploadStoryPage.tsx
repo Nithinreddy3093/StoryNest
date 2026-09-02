@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Story, Chapter, StoryGenre } from '../types';
 import { StoryCard } from '../components/StoryCard';
+import { CreateSeriesModal } from '../components/CreateSeriesModal';
 import { extractTextAndChaptersFromPdf, extractCoverImageFromPdf } from '../utils/pdfExtractor';
 import { uploadStoryPdfToStorage } from '../utils/pdfStorage';
 import { auth } from '../firebase';
@@ -26,6 +27,7 @@ import {
   ExternalLink,
   Camera,
   RefreshCw,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -34,7 +36,7 @@ interface UploadStoryPageProps {
 }
 
 export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) => {
-  const { currentUser, addStory, addToast, openShareModal } = useApp();
+  const { currentUser, addStory, addToast, openShareModal, series, getStoriesForSeries } = useApp();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -47,6 +49,11 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
   const [language, setLanguage] = useState('English');
   const [tagInput, setTagInput] = useState('love, memories, journey');
   const [visibility, setVisibility] = useState<'public' | 'private' | 'unlisted'>('public');
+
+  // Series selection state
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>('');
+  const [seriesPartNumber, setSeriesPartNumber] = useState<number>(1);
+  const [isCreateSeriesModalOpen, setIsCreateSeriesModalOpen] = useState<boolean>(false);
 
   // PDF File & Extraction state
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -354,6 +361,8 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
         likes: 1,
         language,
         visibility,
+        seriesId: selectedSeriesId || undefined,
+        seriesPart: selectedSeriesId ? seriesPartNumber : undefined,
         status: currentUser?.role === 'admin' ? 'published' : 'published',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -738,6 +747,73 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
                       onChange={(e) => setTagInput(e.target.value)}
                       className="w-full bg-[#070b14] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
+                  </div>
+
+                  {/* Series / Saga Collection Selector */}
+                  <div className="p-4 rounded-xl bg-[#070b14] border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-300">
+                        <Layers className="w-4 h-4 text-amber-400" />
+                        <span>Story Series & Saga (Optional)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreateSeriesModalOpen(true)}
+                        className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>New Series</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <select
+                          value={selectedSeriesId}
+                          onChange={(e) => {
+                            const sId = e.target.value;
+                            setSelectedSeriesId(sId);
+                            if (sId) {
+                              const existingStories = getStoriesForSeries(sId);
+                              setSeriesPartNumber(existingStories.length + 1);
+                            }
+                          }}
+                          className="w-full bg-[#0b111e] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                        >
+                          <option value="">Standalone Story (No Series)</option>
+                          {series
+                            .filter(
+                              (s) =>
+                                s.authorId === (currentUser?.id || auth.currentUser?.uid) ||
+                                currentUser?.role === 'admin'
+                            )
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                📚 {s.title} ({s.status})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      {selectedSeriesId && (
+                        <div>
+                          <input
+                            type="number"
+                            min={1}
+                            placeholder="Part #"
+                            value={seriesPartNumber}
+                            onChange={(e) => setSeriesPartNumber(parseInt(e.target.value) || 1)}
+                            className="w-full bg-[#0b111e] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                            title="Part / Volume Number in Series"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {selectedSeriesId && (
+                      <p className="text-[10px] text-slate-400">
+                        This story will be indexed as Part {seriesPartNumber} in your series collection.
+                      </p>
+                    )}
                   </div>
 
                   {/* Story Visibility & Privacy Settings */}
@@ -1387,6 +1463,17 @@ export const UploadStoryPage: React.FC<UploadStoryPageProps> = ({ navigate }) =>
           </div>
         </div>
       </div>
+
+      {/* Inline Create Series Modal */}
+      <CreateSeriesModal
+        isOpen={isCreateSeriesModalOpen}
+        onClose={() => setIsCreateSeriesModalOpen(false)}
+        onCreated={(newSer) => {
+          setSelectedSeriesId(newSer.id);
+          setSeriesPartNumber(1);
+          addToast(`Selected new series: "${newSer.title}"`, 'success');
+        }}
+      />
     </div>
   );
 };

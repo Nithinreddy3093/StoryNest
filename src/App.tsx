@@ -20,6 +20,8 @@ import { StoryReaderPage } from './pages/StoryReaderPage';
 import { PdfReaderPage } from './pages/PdfReaderPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
+import { SeriesDetailPage } from './pages/SeriesDetailPage';
+import { SeriesListPage } from './pages/SeriesListPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -201,6 +203,14 @@ const AppContent: React.FC = () => {
       );
     }
 
+    // 1c. Series Route: 'series:seriesId' or 'series/seriesId'
+    if (currentRoute.startsWith('series:') || currentRoute.startsWith('series/')) {
+      const separator = currentRoute.includes(':') ? ':' : '/';
+      const parts = currentRoute.split(separator);
+      const seriesId = parts[1];
+      return <SeriesDetailPage seriesId={seriesId} navigate={navigate} />;
+    }
+
     // 2. Stories with initial genre: 'stories:Romance'
     if (currentRoute.startsWith('stories:')) {
       const genre = currentRoute.split(':')[1];
@@ -231,6 +241,8 @@ const AppContent: React.FC = () => {
         );
       case 'stories':
         return <StoriesPage navigate={navigate} />;
+      case 'series':
+        return <SeriesListPage navigate={navigate} />;
       case 'genres':
         return <GenresPage navigate={navigate} />;
       case 'top-reads':

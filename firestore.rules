@@ -133,7 +133,23 @@ service cloud.firestore {
              (!('featured' in data) || (data.featured is bool)) &&
              (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
-             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500));
+             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500)) &&
+             (!('seriesId' in data) || (data.seriesId is string && data.seriesId.size() <= 128)) &&
+             (!('seriesPart' in data) || (data.seriesPart is number));
+    }
+
+    function isValidSeries(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 100)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+             (!('coverUrl' in data) || (data.coverUrl is string && data.coverUrl.size() <= 2000000)) &&
+             (!('status' in data) || (data.status is string && (data.status == 'ongoing' || data.status == 'completed' || data.status == 'hiatus'))) &&
+             (!('visibility' in data) || (data.visibility is string && (data.visibility == 'public' || data.visibility == 'private' || data.visibility == 'unlisted'))) &&
+             (!('storyCount' in data) || (data.storyCount is number)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
     }
 
     function isValidReport(data) {
@@ -195,7 +211,15 @@ service cloud.firestore {
       allow delete: if isValidId(storyId) && (isAdmin() || (isSignedIn() && existing().authorId == request.auth.uid) || !isSignedIn());
     }
 
-    // 6. Reflections (Reader reflections and notes)
+    // 6. Series (Story sagas and multi-book collections)
+    match /series/{seriesId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidId(seriesId) && isValidSeries(incoming()) && (incoming().authorId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && isValidId(seriesId) && isValidSeries(incoming()) && (existing().authorId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && isValidId(seriesId) && (existing().authorId == request.auth.uid || isAdmin());
+    }
+
+    // 7. Reflections (Reader reflections and notes)
     match /reflections/{reflectionId} {
       allow get, list: if true;
       allow create: if isValidId(reflectionId) && isValidReflection(incoming());
@@ -203,13 +227,13 @@ service cloud.firestore {
       allow delete: if isValidId(reflectionId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid) || !isSignedIn());
     }
 
-    // 7. Reports
+    // 8. Reports
     match /reports/{reportId} {
       allow create: if isValidId(reportId) && isValidReport(incoming());
       allow get, list, update, delete: if isAdmin();
     }
 
-    // 8. Contacts
+    // 9. Contacts
     match /contacts/{contactId} {
       allow create: if isValidId(contactId) && isValidContact(incoming());
       allow get, list, update, delete: if isAdmin();

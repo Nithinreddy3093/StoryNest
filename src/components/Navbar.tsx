@@ -69,6 +69,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigate }) => {
   const navLinks = [
     { name: 'Home', route: 'home' },
     { name: 'Stories', route: 'stories' },
+    { name: 'Series', route: 'series' },
     { name: 'Genres', route: 'genres' },
     { name: 'Top Reads', route: 'top-reads' },
     { name: 'About', route: 'about' },

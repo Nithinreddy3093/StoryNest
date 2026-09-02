@@ -52,6 +52,24 @@ export interface Story {
   featured?: boolean;
   chapters: Chapter[];
   rejectionReason?: string;
+  seriesId?: string;
+  seriesPart?: number;
+}
+
+export type SeriesStatus = 'ongoing' | 'completed' | 'hiatus';
+
+export interface Series {
+  id: string;
+  title: string;
+  description: string;
+  coverUrl: string;
+  authorId: string;
+  authorName?: string;
+  status: SeriesStatus;
+  visibility?: 'public' | 'private' | 'unlisted';
+  storyCount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GenreCardInfo {
