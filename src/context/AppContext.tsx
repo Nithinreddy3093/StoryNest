@@ -52,6 +52,12 @@ export interface ToastMessage {
   type?: 'success' | 'info' | 'warning' | 'error';
 }
 
+export interface AuthResult {
+  success: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 interface AppContextType {
   // User & Auth
   currentUser: User | null;
@@ -63,10 +69,12 @@ interface AppContextType {
   setAuthModalMode: (mode: 'login' | 'signup' | 'forgot') => void;
   authErrorCode: string | null;
   setAuthErrorCode: (code: string | null) => void;
-  login: (email: string, password?: string, role?: 'admin' | 'author' | 'reader') => Promise<boolean>;
-  signInWithGoogle: () => Promise<boolean>;
-  signup: (name: string, email: string, password?: string, role?: 'author' | 'reader', username?: string) => Promise<boolean>;
-  resetPassword: (email: string) => Promise<boolean>;
+  authErrorMessage: string | null;
+  setAuthErrorMessage: (msg: string | null) => void;
+  login: (email: string, password?: string, role?: 'admin' | 'author' | 'reader') => Promise<AuthResult>;
+  signInWithGoogle: () => Promise<AuthResult>;
+  signup: (name: string, email: string, password?: string, role?: 'author' | 'reader', username?: string) => Promise<AuthResult>;
+  resetPassword: (email: string) => Promise<AuthResult>;
   linkPasswordToAccount: (password: string) => Promise<boolean>;
   linkGoogleToAccount: () => Promise<boolean>;
   getLinkedProviders: () => string[];
@@ -197,6 +205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [authErrorCode, setAuthErrorCode] = useState<string | null>(null);
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Toast Helper
@@ -531,32 +540,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Auth Methods
-  const signInWithGoogle = async (): Promise<boolean> => {
+  const signInWithGoogle = async (): Promise<AuthResult> => {
+    setAuthErrorCode(null);
+    setAuthErrorMessage(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       addToast(`Welcome to StoryNest, ${user.displayName || 'Friend'}!`, 'success');
       setShowAuthModal(false);
-      return true;
+      return { success: true };
     } catch (error: any) {
-      console.error('Google Sign-in failed:', error);
       const errorCode = error?.code || '';
+      setAuthErrorCode(errorCode);
+
+      if (errorCode === 'auth/popup-closed-by-user' || errorCode === 'auth/cancelled-popup-request') {
+        console.info('Google Sign-in dialog closed by user.');
+        addToast('Sign-in cancelled.', 'info');
+        return { success: false, errorCode, errorMessage: 'Sign-in cancelled.' };
+      }
+
       if (errorCode === 'auth/unauthorized-domain') {
         const currentHostname = window.location.hostname;
-        addToast(
-          `Domain "${currentHostname}" is not authorized in Firebase. Please add "${currentHostname}" to Firebase Console -> Authentication -> Settings -> Authorized domains.`,
-          'error'
-        );
-      } else if (errorCode === 'auth/popup-closed-by-user') {
-        addToast('Sign-in cancelled.', 'info');
-      } else if (errorCode === 'auth/popup-blocked') {
-        addToast('Sign-in popup was blocked by your browser. Please allow popups for this site.', 'warning');
-      } else if (errorCode === 'auth/account-exists-with-different-credential') {
-        addToast('An account already exists with this email using a different sign-in method. Please sign in with your original method.', 'warning');
-      } else {
-        addToast(error.message || 'Google Sign-in failed. Please try again.', 'error');
+        const msg = `Domain "${currentHostname}" is not authorized in Firebase. Please add "${currentHostname}" to Firebase Console -> Authentication -> Settings -> Authorized domains.`;
+        console.warn(msg);
+        addToast(msg, 'error');
+        setAuthErrorMessage(msg);
+        return { success: false, errorCode, errorMessage: msg };
       }
-      return false;
+
+      if (errorCode === 'auth/popup-blocked') {
+        const msg = 'Sign-in popup was blocked by your browser. Please allow popups for this site.';
+        console.warn(msg);
+        addToast(msg, 'warning');
+        setAuthErrorMessage(msg);
+        return { success: false, errorCode, errorMessage: msg };
+      }
+
+      if (errorCode === 'auth/account-exists-with-different-credential') {
+        const msg = 'An account already exists with this email using a different sign-in method. Please sign in with your password.';
+        console.warn(msg);
+        addToast(msg, 'warning');
+        setAuthErrorMessage(msg);
+        return { success: false, errorCode, errorMessage: msg };
+      }
+
+      console.error('Google Sign-in failed:', error);
+      const msg = error?.message || 'Google Sign-in failed. Please try again.';
+      addToast(msg, 'error');
+      setAuthErrorMessage(msg);
+      return { success: false, errorCode, errorMessage: msg };
     }
   };
 
@@ -564,16 +596,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     email: string,
     password?: string,
     _role: 'admin' | 'author' | 'reader' = 'reader'
-  ): Promise<boolean> => {
+  ): Promise<AuthResult> => {
     setAuthErrorCode(null);
+    setAuthErrorMessage(null);
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
-      addToast('Please enter your email address.', 'warning');
-      return false;
+      const msg = 'Please enter your email address.';
+      addToast(msg, 'warning');
+      return { success: false, errorCode: 'auth/missing-email', errorMessage: msg };
     }
     if (!password) {
-      addToast('Please enter your password.', 'warning');
-      return false;
+      const msg = 'Please enter your password.';
+      addToast(msg, 'warning');
+      return { success: false, errorCode: 'auth/missing-password', errorMessage: msg };
     }
 
     try {
@@ -633,31 +668,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setShowAuthModal(false);
-      return true;
+      return { success: true };
     } catch (error: any) {
-      console.error('Email sign-in error:', error);
       const errorCode = error?.code || '';
       setAuthErrorCode(errorCode);
+
+      let userFriendlyMsg = 'Failed to sign in. Please try again.';
       if (
         errorCode === 'auth/user-not-found' ||
         errorCode === 'auth/wrong-password' ||
         errorCode === 'auth/invalid-credential'
       ) {
-        addToast('Incorrect email or password.', 'error');
+        userFriendlyMsg = 'Incorrect email or password. If you are new to StoryNest, please switch to Create Account, or continue with Google.';
+        console.warn('Sign-in attempt failed with invalid credentials for:', cleanEmail);
       } else if (errorCode === 'auth/invalid-email') {
-        addToast('Please enter a valid email address.', 'error');
+        userFriendlyMsg = 'Please enter a valid email address.';
+        console.warn('Sign-in attempt failed with invalid email format:', cleanEmail);
       } else if (errorCode === 'auth/user-disabled') {
-        addToast('This account has been disabled. Please contact support.', 'error');
+        userFriendlyMsg = 'This account has been disabled. Please contact support.';
+        console.warn('Sign-in attempt failed for disabled account:', cleanEmail);
       } else if (errorCode === 'auth/too-many-requests') {
-        addToast('Too many failed attempts. Please try again later or reset your password.', 'error');
+        userFriendlyMsg = 'Too many failed sign-in attempts. Please try again in a few minutes or reset your password.';
+        console.warn('Sign-in rate limited for:', cleanEmail);
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Email/Password sign-in is not enabled in Firebase Console. Please enable it under Authentication -> Sign-in method.', 'warning');
+        userFriendlyMsg = 'Email/Password sign-in is not enabled in Firebase Console. Please continue with Google or enable it under Authentication > Sign-in method.';
+        console.warn('Email/Password provider disabled in Firebase Console');
       } else if (errorCode === 'auth/account-exists-with-different-credential') {
-        addToast('This email is already registered with another sign-in method (like Google). Please sign in with Google.', 'warning');
+        userFriendlyMsg = 'This email is already registered with another sign-in method. Please continue with Google.';
+        console.warn('Account exists with different credential for:', cleanEmail);
       } else {
-        addToast(error.message || 'Failed to sign in. Please try again.', 'error');
+        console.error('Email sign-in unexpected error:', error);
+        userFriendlyMsg = error?.message || 'Failed to sign in. Please try again.';
       }
-      return false;
+
+      addToast(userFriendlyMsg, 'error');
+      setAuthErrorMessage(userFriendlyMsg);
+      return { success: false, errorCode, errorMessage: userFriendlyMsg };
     }
   };
 
@@ -667,22 +713,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password?: string,
     role: 'author' | 'reader' = 'reader',
     customUsername?: string
-  ): Promise<boolean> => {
+  ): Promise<AuthResult> => {
     setAuthErrorCode(null);
+    setAuthErrorMessage(null);
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
 
     if (!cleanName) {
-      addToast('Please enter your full name.', 'warning');
-      return false;
+      const msg = 'Please enter your full name.';
+      addToast(msg, 'warning');
+      return { success: false, errorCode: 'auth/missing-name', errorMessage: msg };
     }
     if (!cleanEmail) {
-      addToast('Please enter your email address.', 'warning');
-      return false;
+      const msg = 'Please enter your email address.';
+      addToast(msg, 'warning');
+      return { success: false, errorCode: 'auth/missing-email', errorMessage: msg };
     }
     if (!password || password.length < 6) {
-      addToast('Password must be at least 6 characters long.', 'warning');
-      return false;
+      const msg = 'Password must be at least 6 characters long.';
+      addToast(msg, 'warning');
+      return { success: false, errorCode: 'auth/weak-password', errorMessage: msg };
     }
 
     const cleanUsername = customUsername
@@ -691,8 +741,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const available = await isUsernameAvailable(cleanUsername);
     if (!available) {
-      addToast(`Username @${cleanUsername} is already taken. Please choose another username.`, 'error');
-      return false;
+      const msg = `Username @${cleanUsername} is already taken. Please choose another username.`;
+      addToast(msg, 'error');
+      return { success: false, errorCode: 'auth/username-taken', errorMessage: msg };
     }
 
     try {
@@ -755,56 +806,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(newUser);
       setShowAuthModal(false);
       addToast(`Account created! Welcome to StoryNest, @${newUser.username}.`, 'success');
-      return true;
+      return { success: true };
     } catch (error: any) {
-      console.error('Signup error:', error);
       const errorCode = error?.code || '';
       setAuthErrorCode(errorCode);
 
+      let userMsg = 'Could not create account. Please try again.';
       if (errorCode === 'auth/email-already-in-use') {
-        addToast('An account already exists with this email. Please sign in instead.', 'warning');
+        userMsg = 'An account already exists with this email. Please sign in instead or continue with Google.';
+        console.warn('Signup attempted with existing email:', cleanEmail);
       } else if (errorCode === 'auth/invalid-email') {
-        addToast('Please enter a valid email address.', 'error');
+        userMsg = 'Please enter a valid email address.';
+        console.warn('Signup attempted with invalid email:', cleanEmail);
       } else if (errorCode === 'auth/weak-password') {
-        addToast('Please choose a stronger password (minimum 6 characters).', 'warning');
+        userMsg = 'Please choose a stronger password (minimum 6 characters).';
+        console.warn('Signup attempted with weak password');
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Email/Password provider is not enabled in Firebase Console. Please enable Email/Password under Authentication > Sign-in method.', 'warning');
+        userMsg = 'Email/Password provider is not enabled in Firebase Console. Please continue with Google or enable Email/Password under Authentication > Sign-in method.';
+        console.warn('Email/Password provider is not enabled in Firebase Console');
       } else if (errorCode === 'auth/account-exists-with-different-credential') {
-        addToast('This email is already registered with another sign-in method. Please sign in with Google.', 'warning');
+        userMsg = 'This email is already registered with another sign-in method. Please sign in with Google.';
+        console.warn('Account exists with different credential:', cleanEmail);
       } else {
-        addToast(error.message || 'Could not create account. Please try again.', 'error');
+        console.error('Signup error:', error);
+        userMsg = error?.message || 'Could not create account. Please try again.';
       }
-      return false;
+
+      addToast(userMsg, 'warning');
+      setAuthErrorMessage(userMsg);
+      return { success: false, errorCode, errorMessage: userMsg };
     }
   };
 
-  const resetPassword = async (email: string): Promise<boolean> => {
+  const resetPassword = async (email: string): Promise<AuthResult> => {
+    setAuthErrorCode(null);
+    setAuthErrorMessage(null);
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
-      addToast('Please enter your email address to reset password.', 'warning');
-      return false;
+      const msg = 'Please enter your email address to reset password.';
+      addToast(msg, 'warning');
+      return { success: false, errorCode: 'auth/missing-email', errorMessage: msg };
     }
 
     try {
       await sendPasswordResetEmail(auth, cleanEmail);
-      addToast(`Password reset link sent to ${cleanEmail}. Check your inbox!`, 'success');
-      return true;
+      const successMsg = `Password reset link sent to ${cleanEmail}. Check your inbox!`;
+      addToast(successMsg, 'success');
+      return { success: true, errorMessage: successMsg };
     } catch (error: any) {
-      console.error('Password reset error:', error);
       const errorCode = error?.code || '';
+      setAuthErrorCode(errorCode);
+
+      let userMsg = 'Could not send password reset email.';
       if (errorCode === 'auth/user-not-found') {
-        addToast(`If an account exists for ${cleanEmail}, a reset email has been sent.`, 'info');
-        return true;
+        userMsg = `If an account exists for ${cleanEmail}, a reset email has been sent.`;
+        console.info('Password reset requested for email:', cleanEmail);
+        addToast(userMsg, 'info');
+        return { success: true, errorCode, errorMessage: userMsg };
       } else if (errorCode === 'auth/invalid-email') {
-        addToast('Please provide a valid email address.', 'error');
+        userMsg = 'Please provide a valid email address.';
+        console.warn('Password reset attempted with invalid email:', cleanEmail);
       } else if (errorCode === 'auth/too-many-requests') {
-        addToast('Too many attempts. Please try again later.', 'error');
+        userMsg = 'Too many attempts. Please try again later.';
+        console.warn('Password reset rate limited for:', cleanEmail);
       } else if (errorCode === 'auth/operation-not-allowed') {
-        addToast('Password reset is not enabled in Firebase.', 'error');
+        userMsg = 'Password reset is not enabled in Firebase.';
+        console.warn('Password reset provider not enabled in Firebase');
       } else {
-        addToast(error.message || 'Could not send password reset email.', 'error');
+        console.error('Password reset unexpected error:', error);
+        userMsg = error?.message || 'Could not send password reset email.';
       }
-      return false;
+
+      addToast(userMsg, 'error');
+      setAuthErrorMessage(userMsg);
+      return { success: false, errorCode, errorMessage: userMsg };
     }
   };
 
@@ -857,18 +932,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('Google account successfully linked to your StoryNest profile!', 'success');
       return true;
     } catch (error: any) {
-      console.error('Link Google error:', error);
       const code = error?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        console.info('Google account linking dialog closed by user.');
+        addToast('Google linking cancelled.', 'info');
+        return false;
+      }
       if (code === 'auth/provider-already-linked') {
         addToast('Google is already linked to this account.', 'info');
         return true;
       } else if (code === 'auth/credential-already-in-use') {
         addToast('This Google account is already associated with another user.', 'error');
-      } else if (code === 'auth/popup-closed-by-user') {
-        addToast('Google linking cancelled.', 'info');
-      } else {
-        addToast(error.message || 'Failed to link Google account.', 'error');
+        return false;
       }
+      console.error('Link Google error:', error);
+      addToast(error.message || 'Failed to link Google account.', 'error');
       return false;
     }
   };
@@ -2303,6 +2381,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAuthModalMode,
         authErrorCode,
         setAuthErrorCode,
+        authErrorMessage,
+        setAuthErrorMessage,
         login,
         signInWithGoogle,
         signup,

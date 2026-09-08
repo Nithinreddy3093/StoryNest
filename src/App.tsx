@@ -147,6 +147,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 };
 
 const AppContent: React.FC = () => {
+  const { setShowAuthModal, setAuthModalMode } = useApp();
   // Navigation State
   const [currentRoute, setCurrentRoute] = useState<string>('home');
   const [showHowItWorks, setShowHowItWorks] = useState<boolean>(false);
@@ -156,6 +157,16 @@ const AppContent: React.FC = () => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace(/^#\/?/, '');
       if (hash) {
+        if (hash === 'login' || hash === 'signin' || hash === 'auth') {
+          setAuthModalMode('login');
+          setShowAuthModal(true);
+          return;
+        }
+        if (hash === 'signup' || hash === 'register') {
+          setAuthModalMode('signup');
+          setShowAuthModal(true);
+          return;
+        }
         setCurrentRoute(hash);
       }
     };
@@ -166,7 +177,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [setShowAuthModal, setAuthModalMode]);
 
   const navigate = (route: string) => {
     setCurrentRoute(route);
